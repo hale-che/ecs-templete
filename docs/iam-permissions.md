@@ -12,7 +12,7 @@
 | 角色 | 个数 | 用途 | 现状 |
 | --- | --- | --- | --- |
 | ECS 执行角色 | 3（每服务一个） | ECS 代理拉镜像、写日志、取密钥 | 需求已明确，见第 1 节 |
-| ECS 任务角色 | 3（每服务一个） | 业务代码调 AWS API | 待应用侧确认，**很可能确认为不需要**，见第 2 节 |
+| ECS 任务角色 | 3（每服务一个） | 业务代码调 AWS API | **待细化**：后端已知要用 S3，见第 2 节 |
 | CodeBuild 服务角色 | 1 | 构建、推镜像、触发部署 | 需求已明确，但依赖发布方案，见第 3 节 |
 | 跑 Terraform 的身份 | 1 | 创建上面这些资源 | 需求已明确，见第 4 节 |
 
@@ -32,22 +32,55 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 
 信任策略：`ecs-tasks.amazonaws.com`，带 `aws:SourceAccount` 和 `aws:SourceArn`（防混淆代理）。
 
-## 2. ECS 任务角色 —— 待应用侧确认
+## 2. ECS 任务角色 —— 待细化
 
-业务代码调 AWS API 用。三个角色现在都是空的。
+业务代码调 AWS API 用。三个角色现在都是空的，但**已知后端会用到 S3 和发邮件**，需要细化到 ARN。
 
-**空角色是合法状态**，角色建出来不挂策略，apply 正常过，不阻塞任何节点。
-漏了权限的表现也很明确：应用日志里出现 `AccessDenied` 并指明缺哪个 action，照着补。
+两个前端（静态资源 + 反代）预计为空，请确认。
 
-**"不需要" 是个正常结论，不是缺口。** 两个前端（静态资源 + 反代）几乎确定为空；
-后端如果只连 RDS 和 Redis 也是空的 —— 从 Secrets Manager 取密码注入环境变量是**执行角色**干的，不走任务角色。
+**空角色是合法状态**，角色建出来不挂策略，apply 正常过，不阻塞第一次创建。
+漏了权限的表现也很明确：应用日志里出现 `AccessDenied` 并指明缺哪个 action。
 
-真需要填的只有代码里直接调 AWS SDK 的场景。确认方式：在后端代码里 grep
-`boto3.client(` / `software.amazon.awssdk` / `@aws-sdk/client-` / `aws-sdk-go`，一个都没有就是不需要。
+### 已知会用到的
 
-有的话请应用侧回答：
+**S3** —— 需要 bucket 名和前缀。对象操作和 `ListBucket` 是两条，资源粒度不同：
 
-- [ ] 读写 S3？哪个 bucket、哪些前缀
+    task_role_policy_statements = [
+      {
+        sid       = "ReadWriteOwnPrefix"
+        actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        resources = ["arn:aws-cn:s3:::<bucket>/<前缀>/*"]
+      },
+      {
+        sid       = "ListOwnPrefix"
+        actions   = ["s3:ListBucket"]
+        resources = ["arn:aws-cn:s3:::<bucket>"]
+        conditions = [{
+          test     = "StringLike"
+          variable = "s3:prefix"
+          values   = ["<前缀>/*"]
+        }]
+      },
+    ]
+
+`ListBucket` 的资源只能是 bucket 本身（不带 `/*`），所以靠 `s3:prefix` 条件收口到项目自己的前缀。
+如果 bucket 用 CMK 加密，还要对那个 key 加 `kms:Decrypt` 和 `kms:GenerateDataKey`。
+
+**发邮件 —— 大概率不需要 IAM 权限。**
+
+**SES 在 cn-north-1 不可用。** 所以邮件要么走企业邮箱 / 内部 SMTP 中继，要么走第三方发信服务。
+那些都是普通 TCP 连接，不是 AWS API，**任务角色不需要任何权限**。需要的是另外两样：
+
+- 安全组放通出站到 SMTP 端口（25 / 465 / 587）
+- SMTP 凭证放 Secrets Manager，填进 `services.backend.secrets`，由**执行角色**注入成环境变量
+
+请确认邮件走哪条路 —— 如果真的打算跨区调用 global 的 SES，那是跨分区调用，需要另一套凭证和网络出口，要单独评估。
+
+### 还需要确认的
+
+- [ ] S3 的 bucket 名和前缀
+- [ ] bucket 是否 CMK 加密，key ARN
+- [ ] 邮件走 SMTP 还是别的
 - [ ] 发送 SQS / SNS？哪个队列或主题
 - [ ] 读写 DynamoDB？哪张表
 - [ ] 调 Bedrock 或其他 AI 服务？
@@ -55,7 +88,7 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 - [ ] RDS 走 IAM 认证（`rds-db:connect`）还是密码？
 - [ ] 需要 `sts:AssumeRole` 跨账号或跨服务？
 
-每条要给到**资源 ARN 粒度**，AZ 规范要求限定到项目自身资源。模板层面禁掉了 `actions = ["*"]` 和 `resources = ["*"]`，填通配 plan 阶段直接报错。
+每条要给到**资源 ARN 粒度**。模板层面禁掉了 `actions = ["*"]` 和 `resources = ["*"]`，填通配 plan 阶段直接报错。
 
 ## 3. CodeBuild 服务角色
 

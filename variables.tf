@@ -87,10 +87,16 @@ variable "services" {
     readonly_root_filesystem = optional(bool, false)
 
     # 业务代码访问 AWS 资源的权限。AZ 规范要求限定到项目自身资源，禁通配。
+    # conditions 用于进一步收口，例如 s3:ListBucket 配 s3:prefix 只列项目自己的前缀。
     task_role_policy_statements = optional(list(object({
       sid       = optional(string)
       actions   = list(string)
       resources = list(string)
+      conditions = optional(list(object({
+        test     = string
+        variable = string
+        values   = list(string)
+      })), [])
     })), [])
 
     # 任务数。null 当 1 用。
