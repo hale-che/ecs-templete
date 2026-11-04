@@ -114,12 +114,12 @@ revision 不可变，state 里那个一直存在，CodeBuild 新注册的不算�
 
 挂卷（EFS / tmpfs）、ECS Exec、多容器 sidecar、SSM Parameter Store、服务发现（Service Connect / Cloud Map）。要哪个再加。
 
-## 容易踩的
+## 注意事项
 
 - `readonly_root_filesystem` 默认 `false`。nginx 要写 `/var/cache/nginx`，设成 `true` 容器起不来。
 - 镜像架构固定 `X86_64`，ARM64 镜像跑不起来，报 exec format error。
 - Fargate 的 cpu/memory 是固定组合表，`main.tf` 有 precondition 在 plan 阶段拦。
-- 一个环境一个 state，**PRD 的一次 apply 覆盖该环境全部三个服务**。
+- **三个环境互不影响**，各有独立的 state。但一个环境的 state 里装着它的三个服务，所以对 PRD 跑一次 apply，`frontend-ext`、`frontend-int`、`backend` 会出现在同一个 plan 里 —— 只想改一个服务，也要把整个 plan 看完。
 - 第一次 apply 时镜像必须已经推到 ECR，否则服务起不来任务，部署熔断会回滚。
 - Container Insights 默认开着，按指标量计费。DEV 要省钱改 `cluster.tf`。
 - 服务名同时是容器名，所以只收小写字母数字连字符，有校验。
