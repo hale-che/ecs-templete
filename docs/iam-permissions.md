@@ -89,7 +89,7 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 
 **方案 A 权限明显更小，而且不需要 `PassRole`。** 前提是 ECR 仓库允许 `MUTABLE` tag。
 
-## 4. 跑 Terraform 的身份
+## 4. 执行 Terraform 的身份
 
 可以就是 CodeBuild 角色，也可以单独一个。**这个要先有，才能跑第一次 apply。**
 
@@ -111,7 +111,7 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 | `s3:GetObject` `s3:PutObject` `s3:DeleteObject` | state key | 读写 state |
 | `dynamodb:GetItem` `dynamodb:PutItem` `dynamodb:DeleteItem` | 锁表 ARN | state 锁。Terraform 1.6 没有 `use_lockfile`，锁表不是可选项 |
 
-## 5. 要 AZ 那边动手的
+## 5. 需要 AZ 配置的项
 
 这几条不是建角色能解决的：
 

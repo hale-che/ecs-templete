@@ -7,7 +7,7 @@
 
 apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任务在跑。
 
-## 你只需要填这些
+## 需要填写的内容
 
 每个 `env/*.tfvars` 各填一遍：
 
@@ -84,7 +84,7 @@ revision 不可变，state 里那个一直存在，CodeBuild 新注册的不算�
 
 对 CodeBuild 那份代码的约束：重新注册 revision 前必须 `describe-task-definition --include TAGS`，否则新 revision 丢掉强制 Tag。
 
-## 跑
+## 执行
 
     terraform init \
       -backend-config="bucket=<bucket>" \
@@ -110,7 +110,7 @@ revision 不可变，state 里那个一直存在，CodeBuild 新注册的不算�
 
 前端调后端走内部 ALB，地址从 `environment` 里的 `BACKEND_URL` 注入，分环境。
 
-## 没支持的
+## 暂不支持
 
 挂卷（EFS / tmpfs）、ECS Exec、多容器 sidecar、SSM Parameter Store、服务发现（Service Connect / Cloud Map）。要哪个再加。
 

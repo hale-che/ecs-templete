@@ -16,11 +16,11 @@
 **这份代码建：** ECS 集群、3 个服务、3 个 Task Definition、3 个 KMS 加密日志组、6 个 IAM 角色、PRD 的自动扩缩容。
 **这份代码不建：** VPC / 子网、安全组、ALB / 监听器 / 目标组、ECR 仓库、RDS、CodeBuild。
 
-## AZ 要创建的东西
+## AZ 需要创建的资源
 
 按**不给就卡在哪一步**排序。
 
-### A. 卡住 `terraform init`
+### A. 缺失会导致 `terraform init` 失败
 
 | 资源 | 说明 |
 | --- | --- |
@@ -28,13 +28,13 @@
 | DynamoDB 锁表 | Terraform 1.6 没有 `use_lockfile`，锁表不是可选项 |
 | 跑 Terraform 的 IAM 身份 | 权限见 `iam-permissions.md` 第 4 节。**`s3:ListBucket` 不能漏** |
 
-### B. 卡住 `terraform plan`
+### B. 缺失会导致 `terraform plan` 失败
 
 | 资源 | 说明 |
 | --- | --- |
 | KMS CMK（日志加密用） | plan 阶段 `data.aws_kms_key` 要解析它，必须已存在 |
 
-### C. 卡住 `terraform apply`
+### C. 缺失会导致 `terraform apply` 失败
 
 | 资源 | 数量 | 说明 |
 | --- | --- | --- |
@@ -42,7 +42,7 @@
 | 安全组 | 3（一服务一个） | 流向见下文 |
 | ALB 目标组 | 3 | 两个前端 + 后端。健康检查路径配在这里 |
 
-### D. apply 成功了但任务起不来
+### D. apply 成功但任务无法启动
 
 **这一组最危险：plan 和 apply 都显示成功，服务却一直起不来任务。**
 
@@ -52,7 +52,7 @@
 | 3 个 ECR 仓库 | 一服务一个。仓库里还得先有镜像，否则熔断回滚 |
 | 日志 CMK 的 Key Policy | 要允许 `logs.<region>.amazonaws.com`，否则建日志组就报 AccessDenied |
 
-### E. 任务起来了但用户访问不到
+### E. 任务已启动但用户无法访问
 
 | 资源 | 说明 |
 | --- | --- |
@@ -61,7 +61,7 @@
 | ACM 证书 | 外部 ALB 要 HTTPS 就得有。中国区证书签发流程另算 |
 | 域名解析 | 指向外部 ALB。SSO 回调域名也在这一步 |
 
-### F. 用户能访问了但后端连不上库
+### F. 用户可访问但后端连不上数据库
 
 | 资源 | 说明 |
 | --- | --- |
@@ -69,7 +69,7 @@
 | 密码所在的 Secrets Manager Secret | ARN 要给我们，填进 `services.backend.secrets` |
 | **该 Secret 的 CMK Key Policy** | 必须显式允许本项目执行角色 `kms:Decrypt`。AZ 建库、我们读密码，**这个跨团队依赖最容易漏到联调才发现** |
 
-## 安全组要开的流向
+## 安全组需放通的流向
 
 | 源 | 目标 | 端口 | 为什么 |
 | --- | --- | --- | --- |
@@ -94,7 +94,7 @@
 | 强制 Tag 的**真实键名** | `variables.tf` 的 `mandatory_tags` type + 三个 tfvars |
 | RDS 密码的 Secret ARN | `services.backend.secrets` |
 
-## 项目组填（代码里）
+## 项目组填写（代码里）
 
 三个 `env/*.tfvars` 各填一遍。
 
