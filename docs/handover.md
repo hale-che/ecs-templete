@@ -139,7 +139,7 @@
 
 ## 待确认 —— 全链路 HTTPS 相关（阻塞写代码）
 
-SBP 定了「要 HTTPS、证书挂容器」，但没说怎么落地。下面四条定不下来，代码写不完。
+SBP 定了「要 HTTPS、证书挂容器」，但没说怎么落地。第 2 条已确认，其余三条定不下来代码写不完。
 
 **1. 证书从哪来？**
 
@@ -149,11 +149,16 @@ SBP 定了「要 HTTPS、证书挂容器」，但没说怎么落地。下面四�
 | 内部 CA 签发，人工存进 Secrets Manager | 最简单。证书到期要人工轮换 |
 | 自签 | 前端得跳过证书校验，等于只加密不验身份 |
 
-**2. 证书怎么进容器？** 本模板目前只支持 Secrets Manager 注入成环境变量。
+**2. 证书怎么进容器？已定：Secrets Manager 注入，不用 EFS。**
 
-- **Secrets Manager**（推荐）：PEM 存成 secret，注入成环境变量，entrypoint 写成文件。几 KB 的证书没有大小问题，轮换只需重启任务
-- **EFS 挂载**：需要本模板加 `volumes` 支持，还要 AZ 建 EFS 和接入点
-- 打进镜像：**不行**，轮换要重新构建，证书也会留在镜像层里
+PEM 存成 secret 的两个 JSON 字段，ECS 代理注入成环境变量 `TLS_CERT` / `TLS_KEY`，
+entrypoint 写成文件。代码侧已就绪，`services.*.secrets` 填 ARN 即可，执行角色权限自动跟着生成。
+
+还需要 AZ 给两样：**证书 Secret 的 ARN**，以及**加密它的 CMK ARN**（填 `secret_kms_key_arns`；
+如果和日志用的是同一把，或者用 AWS 托管密钥，就不用填）。
+
+剩下两个细节要对齐：PEM 在 JSON 字段里存原文（换行转义成 `\n`）还是存 base64；
+后端 Spring Boot 的版本 —— 2.7 以下只认 PKCS12，entrypoint 要多一步 `openssl pkcs12 -export`。
 
 **3. 前端用什么主机名访问后端？** 这决定证书的 SAN，也决定服务发现方式。
 
