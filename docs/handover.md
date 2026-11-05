@@ -157,8 +157,9 @@ entrypoint 写成文件。代码侧已就绪，`services.*.secrets` 填 ARN 即�
 还需要 AZ 给两样：**证书 Secret 的 ARN**，以及**加密它的 CMK ARN**（填 `secret_kms_key_arns`；
 如果和日志用的是同一把，或者用 AWS 托管密钥，就不用填）。
 
-剩下两个细节要对齐：PEM 在 JSON 字段里存原文（换行转义成 `\n`）还是存 base64；
-后端 Spring Boot 的版本 —— 2.7 以下只认 PKCS12，entrypoint 要多一步 `openssl pkcs12 -export`。
+**PEM 内容用 base64 存**（已确认），两个 JSON 字段 `cert` / `key` 各一份，命令见 `image-requirements.md` 第 5 节。
+
+还剩一个细节：后端 Spring Boot 的版本 —— 2.7 以下只认 PKCS12，entrypoint 要多一步 `openssl pkcs12 -export`。
 
 **3. 前端用什么主机名访问后端？** 这决定证书的 SAN，也决定服务发现方式。
 

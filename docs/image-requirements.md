@@ -61,20 +61,32 @@ nginx 不会自己读环境变量，镜像要在 entrypoint 里做一次替换�
 
 全链路 HTTPS：ALB 到前端是 8443，前端到后端是 8002，**三个容器都要自己终止 TLS**。
 
-证书走 Secrets Manager，注入成两个环境变量，entrypoint 写成文件：
+证书走 Secrets Manager，**内容用 base64 存**（已和 AZ 确认），注入成环境变量后由 entrypoint 落盘。
+
+Secret 是一个 JSON，两个字段都是 base64：
+
+    aws secretsmanager create-secret --name <secret 名> --secret-string "$(jq -n \
+      --arg cert "$(base64 -w0 tls.crt)" \
+      --arg key  "$(base64 -w0 tls.key)" \
+      '{cert:$cert, key:$key}')"
+
+`-w0` 不能漏，否则 base64 自己会折行，塞进 JSON 还要再处理一轮转义。
+
+entrypoint 解码写文件：
 
     #!/bin/sh
     set -e
     umask 077
-    printf '%s' "$TLS_CERT" > /etc/ssl/app/tls.crt
-    printf '%s' "$TLS_KEY"  > /etc/ssl/app/tls.key
+    mkdir -p /etc/ssl/app
+    printf '%s' "$TLS_CERT" | base64 -d > /etc/ssl/app/tls.crt
+    printf '%s' "$TLS_KEY"  | base64 -d > /etc/ssl/app/tls.key
     chmod 600 /etc/ssl/app/tls.key
     exec "$@"
 
 变量名要和 `env/*.tfvars` 里 `secrets` 的 key 一致，现在写的是 `TLS_CERT` / `TLS_KEY`。
 
-**PEM 的换行容易出问题。** 存进 Secrets Manager 的 JSON 字段时换行要转义成 `\n`，取出来才是真换行。
-不放心就约定存 base64，entrypoint 里 `base64 -d` 一次，这样对转义完全免疫。存哪种要和 AZ 对齐。
+**为什么用 base64**：PEM 原文有换行，存进 JSON 字段要转义成 `\n`，手工创建 secret 时极易弄错，
+而且错了的表现是「证书格式非法」，不会指向转义。base64 是单行 ASCII，对转义完全免疫。
 
 写文件需要可写的根文件系统 —— `readonly_root_filesystem` 已经是 `false`。
 
