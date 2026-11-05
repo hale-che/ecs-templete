@@ -169,6 +169,5 @@ ALB 到目标本来就不校验（AWS 既定行为），前端到后端由我们
 2. IAM 命名 / path 约束，是否和 `AZ-CNRDIT-` 前缀冲突
 3. 是否强制 Permissions Boundary，ARN 是多少
 4. `kms:ViaService` 在 aws-cn 的后缀形式（`iam.tf` 里两种都列了）
-5. CodeBuild 在 cn-north-1 能不能用 CodeConnections 连 GitHub
-6. ALB 访问日志、WAF 规则集等基线要求（WAF 本身 SBP 已明确要有）
-7. 后端调 Graph API 发邮件：Entra ID 的 client credentials 存哪个 Secret
+5. ALB 访问日志、WAF 规则集等基线要求（WAF 本身 SBP 已明确要有）
+6. 后端调 Graph API 发邮件：Entra ID 的 client credentials 存哪个 Secret

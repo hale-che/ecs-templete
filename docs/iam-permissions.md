@@ -93,7 +93,8 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 
 ## 3. CodeBuild 服务角色
 
-不在本模板里，项目组另外的代码目录。
+不在本模板里。**沿用贵方现成的 CodeBuild 模板**，下面只列和本项目相关的资源范围，
+用来核对模板里的权限是否覆盖得到。源码接入方式（CodeConnections 或 token）按模板既有做法。
 
 **基础部分，两套发布方案都要：**
 
@@ -102,7 +103,7 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 | `logs:CreateLogGroup` `logs:CreateLogStream` `logs:PutLogEvents` | `/aws/codebuild/<project>:*` | CodeBuild 自己的构建日志 |
 | `ecr:GetAuthorizationToken` | **`*` 必须** | 取 ECR 登录令牌 |
 | `ecr:BatchCheckLayerAvailability` `ecr:InitiateLayerUpload` `ecr:UploadLayerPart` `ecr:CompleteLayerUpload` `ecr:PutImage` `ecr:BatchGetImage` | 三个项目仓库 | push 镜像 |
-| `codeconnections:UseConnection` | Connection ARN | 拉 GitHub 源码。**cn-north-1 是否支持 CodeConnections 待确认**；不支持就改用 token，换成对 token Secret 的 `secretsmanager:GetSecretValue` |
+| 源码接入（`codeconnections:UseConnection` 或读 token 的 `secretsmanager:GetSecretValue`） | Connection ARN 或 token Secret | 拉 GitHub 源码，按贵方模板既有做法 |
 | `s3:GetObject` `s3:GetObjectVersion` `s3:PutObject` `s3:GetBucketAcl` `s3:GetBucketLocation` | artifact bucket | 没配 S3 artifact 可整段去掉 |
 
 **跑在 VPC 里才需要**（要访问私有子网里的资源时）：
