@@ -73,16 +73,51 @@ DEV / PPD 不填 `min_capacity`/`max_capacity`，所以不建 Auto Scaling，任
 
 `mandatory_tags` 的键名是我按理解写的，**拿到 AZ 清单后要核对改名**。IAM 权限清单见 `docs/iam-permissions.md`。
 
-## 发布解耦
+## 发布流程
 
-Terraform 只注册 revision 1，之后 CodeBuild 改镜像 tag，不动 Terraform 代码。
+### 首次部署，顺序不能反
 
-revision 不可变，state 里那个一直存在，CodeBuild 新注册的不算偏移，所以**不需要** `ignore_changes`，但 `track_latest` 必须保持 `false`。
+1. CodeBuild 构建并推镜像到 ECR，tag 要和 tfvars 里写的一致
+2. PRD 把 `tag` 填成那个确定版本；DEV/PPD 确认 `latest` 已存在
+3. `terraform apply`
 
-服务侧的 `ignore_changes = [task_definition, desired_count]` 已经在 `service.tf` 里了。
-代价：Terraform 改了 cpu/内存之后会注册新 revision，但**服务不会自动切过去**，要靠下一次 CodeBuild 发版带上，或手动 `update-service`。
+**镜像不在就 apply**，结果是 apply 显示成功、服务起不来任务、部署熔断回滚。
 
-对 CodeBuild 那份代码的约束：重新注册 revision 前必须 `describe-task-definition --include TAGS`，否则新 revision 丢掉强制 Tag。
+### 之后发版，两种方式代码都支持
+
+| | A 覆盖同 tag | B 注册新 revision |
+| --- | --- | --- |
+| CodeBuild 做什么 | push 同 tag → `update-service --force-new-deployment` | push 新 tag → describe → register → `update-service --task-definition` |
+| revision | 永远停在 1 | 递增 |
+| ECR tag 要求 | **必须 `MUTABLE`** | `IMMUTABLE` 也行 |
+| 回滚 | 重新 push 旧镜像覆盖 | `update-service` 指回旧 revision |
+| 额外 IAM | 无 | `iam:PassRole` |
+| **Terraform 改了配置** | **不会自动生效** | 下次发版自动带上 |
+
+最后一行差别最大。因为服务有 `ignore_changes = [task_definition]`，Terraform 改了
+cpu / 内存 / 环境变量 / 证书 ARN 之后会注册新 revision，但服务不会切过去：
+
+- **方案 B**：下次 CodeBuild 发版以线上最新 revision 为基准，自动带上
+- **方案 A**：`--force-new-deployment` 只重拉镜像、不换 revision，**必须手动切一次**
+
+      aws ecs update-service --cluster <集群> --service <服务> --task-definition <新 arn>
+
+B 注册新 revision 时必须带 `describe-task-definition --include TAGS`，否则新 revision 丢掉强制 Tag。
+
+### 证书轮换
+
+改 Secrets Manager 里的值 → `update-service --force-new-deployment` → 新任务拿到新证书。
+不用改 Terraform，不用重新打镜像。
+
+## 为什么 Terraform 和发版互不干扰
+
+两个设置撑着这件事，改动它们会直接破坏上面的流程：
+
+- **Task Definition 不设 `ignore_changes`，但 `track_latest` 必须是 `false`。**
+  revision 不可变，state 里记的那个一直存在，CodeBuild 新注册的 revision 在 plan 里根本不出现。
+  `track_latest = true` 会变成按 family 读最新，于是天天有偏移。
+- **服务设 `ignore_changes = [task_definition, desired_count]`。**
+  前者让 CodeBuild 指定的 revision 不被 apply 拽回去，后者让 Auto Scaling 能改任务数。
 
 ## 执行
 
