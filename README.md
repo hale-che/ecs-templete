@@ -94,15 +94,18 @@ DEV / PPD 不填 `min_capacity`/`max_capacity`，所以不建 Auto Scaling，任
 | 额外 IAM | 无 | `iam:PassRole` |
 | **Terraform 改了配置** | **不会自动生效** | 下次发版自动带上 |
 
-最后一行差别最大。因为服务有 `ignore_changes = [task_definition]`，Terraform 改了
-cpu / 内存 / 环境变量 / 证书 ARN 之后会注册新 revision，但服务不会切过去：
+最后一行差别最大。服务有 `ignore_changes = [task_definition]`，所以 Terraform 改了
+cpu / 内存 / 环境变量 / 证书 ARN 之后虽然会注册新 revision，服务却不会自己切过去。两种方式的区别：
 
-- **方案 B**：下次 CodeBuild 发版以线上最新 revision 为基准，自动带上
-- **方案 A**：`--force-new-deployment` 只重拉镜像、不换 revision，**必须手动切一次**
+**A 不会自动生效。** `--force-new-deployment` 不带 `--task-definition`，服务保持当前 revision，
+新任务只是重新拉了同一个 tag 的镜像。Terraform 那个新 revision 要手动切一次：
 
-      aws ecs update-service --cluster <集群> --service <服务> --task-definition <新 arn>
+    aws ecs update-service --cluster <集群> --service <服务> --task-definition <新 arn>
 
-B 注册新 revision 时必须带 `describe-task-definition --include TAGS`，否则新 revision 丢掉强制 Tag。
+**B 会自动带上。** `describe-task-definition --task-definition <family>` 不指定 revision 号时
+返回的是最新的 ACTIVE revision，也就是 Terraform 刚注册的那个，改完 image 再注册就把改动带进去了。
+
+B 还必须带 `--include TAGS`，否则新 revision 丢掉强制 Tag。
 
 ### 证书轮换
 
