@@ -118,6 +118,8 @@
 | **2 个**目标组 ARN（只有两个前端） | `services.*.target_group_arn` |
 | 强制 Tag 的**真实键名** | `variables.tf` 的 `mandatory_tags` type + 三个 tfvars |
 | RDS 密码的 Secret ARN | `services.backend.secrets` |
+| **TLS 证书的 Secret ARN** | 三个服务的 `services.*.secrets` |
+| **加密上面两个 Secret 的 CMK ARN** | `secret_kms_key_arns`（和日志同一把或用托管密钥则不填） |
 
 ## 项目组填写（代码里）
 
@@ -149,10 +151,6 @@
 
 **不校验的直接后果：三张证书都可以自签，不需要走 CA 流程。**
 ALB 到目标本来就不校验（AWS 既定行为），前端到后端由我们显式关掉。
-代价是只做到加密、没有身份验证 —— 中间人可以冒充后端，这一点请贵方安全侧确认接受。
-
-还需要贵方提供：**证书 Secret 的 ARN**，以及**加密它的 CMK ARN**（和日志用同一把、
-或用 AWS 托管密钥则不用填）。
 
 两个格式要求，签发时就要满足：
 
