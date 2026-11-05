@@ -159,7 +159,8 @@ entrypoint 写成文件。代码侧已就绪，`services.*.secrets` 填 ARN 即�
 
 **PEM 内容用 base64 存**（已确认），两个 JSON 字段 `cert` / `key` 各一份，命令见 `image-requirements.md` 第 5 节。
 
-还剩一个细节：后端 Spring Boot 的版本 —— 2.7 以下只认 PKCS12，entrypoint 要多一步 `openssl pkcs12 -export`。
+后端是 Spring Boot 4.1，直接读 PEM，不用转 PKCS12。但**私钥要未加密的 PKCS#8 格式**，
+签发证书时就要跟 CA 说明，否则 Spring Boot 读不了。
 
 **3. 前端用什么主机名访问后端？** 这决定证书的 SAN，也决定服务发现方式。
 

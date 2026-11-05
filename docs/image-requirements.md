@@ -90,6 +90,36 @@ entrypoint 解码写文件：
 
 写文件需要可写的根文件系统 —— `readonly_root_filesystem` 已经是 `false`。
 
+### 应用怎么读这两个文件
+
+nginx（两个前端）：
+
+    listen 8443 ssl;
+    ssl_certificate     /etc/ssl/app/tls.crt;
+    ssl_certificate_key /etc/ssl/app/tls.key;
+
+Spring Boot 4.1（后端）—— 直接读 PEM，**不用转 PKCS12**：
+
+    server:
+      port: 8002
+      ssl:
+        bundle: server
+    spring:
+      ssl:
+        bundle:
+          pem:
+            server:
+              keystore:
+                certificate: file:/etc/ssl/app/tls.crt
+                private-key: file:/etc/ssl/app/tls.key
+
+**私钥必须是未加密的 PKCS#8**，也就是 `-----BEGIN PRIVATE KEY-----` 开头。
+CA 给的是 PKCS#1（`-----BEGIN RSA PRIVATE KEY-----`）或者带密码的话，先转一次再 base64：
+
+    openssl pkcs8 -topk8 -nocrypt -in old.key -out tls.key
+
+这条要在**签发证书时就跟 CA 说清楚**，不然拿到手才发现格式不对，又得走一轮。
+
 **前端的证书可以自签**：ALB 到目标的 HTTPS 连接**不校验目标证书**，这是 ALB 的既定行为。
 真正需要被信任的是后端那张 —— 前端 nginx 会校验它，所以它的 **SAN 必须包含前端实际访问的主机名**。
 
