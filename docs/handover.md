@@ -1,17 +1,36 @@
 # 交接清单
 
+依据 SBP v3.4 第 2.4.2 节 Network Configuration Table。
+
 ## 架构
 
-    用户（公网）  →  外部 ALB  →  frontend-ext  (80)
-    用户（内网）  →  内部 ALB  →  frontend-int  (80)   监听规则 /
-                              →  backend       (8080)  监听规则 /api
-                                      ↓
-                                     RDS
+    公网用户  →443→  WAF + 外部 ALB  →8443 HTTPS→  frontend-ext (Nginx)
+    内网用户  →443→  WAF + 内部 ALB  →8443 HTTPS→  frontend-int (Nginx)
+                                                        │
+                                            8002 HTTPS  │ 任务直连，不经 ALB
+                                                        ▼
+                                                  backend (Spring Boot)
+                                                        │
+                        ┌───────────────────────────────┼────────────────────┐
+                   5432 TLS                        443 Endpoint          443 公网
+                        ▼                               ▼                    ▼
+                      RDS                        S3 / Secrets /        Entra ID /
+                   PostgreSQL                    Logs / ECR            Graph API
 
-- 前端 nginx 把 `/api` 反代到**内部 ALB**，地址从 `BACKEND_URL` 环境变量进来
+- **全链路 HTTPS**：ALB 到前端、前端到后端都是 TLS，证书挂载进容器
+- **后端不挂 ALB**：前端到后端是任务直连，安全组按前端服务的安全组限制
 - 三个服务都跑 Fargate，在私有子网，不分配公网 IP
-- 健康检查全部由 **ALB 目标组**做，配在 ALB 那边，不在这份代码里
 - 一个环境一个 ECS 集群，三个服务共用
+
+### 出网：Endpoint 和 NAT 都要
+
+| 走 VPC Endpoint | 走 NAT（公网出站） |
+| --- | --- |
+| ECR API、ECR dkr（接口型） | AstraZeneca IdP / Entra ID |
+| S3（网关型，兼做 ECR 镜像层和业务文件） | Microsoft Graph API（发邮件） |
+| Secrets Manager、CloudWatch Logs（接口型） | |
+
+**不是二选一。** AWS 服务走 Endpoint，Entra ID 和 Graph API 是公网出站，必须有 NAT 或出站代理。
 
 **这份代码建：** ECS 集群、3 个服务、3 个 Task Definition、3 个 KMS 加密日志组、6 个 IAM 角色、PRD 的自动扩缩容。
 **这份代码不建：** VPC / 子网、安全组、ALB / 监听器 / 目标组、ECR 仓库、RDS、CodeBuild。
@@ -71,17 +90,21 @@
 
 ## 安全组需放通的流向
 
-| 源 | 目标 | 端口 | 为什么 |
-| --- | --- | --- | --- |
-| 外部 ALB | `frontend-ext` | 80 | 外部用户访问 |
-| 内部 ALB | `frontend-int` | 80 | 内部用户访问 |
-| 内部 ALB | `backend` | 8080 | 按 `/api` 路径转给后端 |
-| 两个前端 | 内部 ALB | 80 / 443 | 前端 nginx 反代 `/api` |
-| `backend` | RDS | 5432 / 3306 | 访问数据库 |
-| `backend` | SMTP 服务器 | 25 / 465 / 587 | **后续才用到**，但建议一起申请。SES 在 cn-north-1 不可用，走哪个 SMTP 待确认 |
-| 三个服务 | 出站 443 | | 拉镜像、写日志、取密钥 |
+对应 SBP 2.4.2。
 
-后端和 `frontend-int` 共用内部 ALB，两个目标组靠监听规则的路径分流。
+| 源 | 目标 | 端口 | 协议 |
+| --- | --- | --- | --- |
+| 公网用户 | 外部 ALB（WAF 后） | 443 | HTTPS |
+| 内网 / VPN 用户 | 内部 ALB（WAF 后） | 443 | HTTPS |
+| 外部 ALB | `frontend-ext` | 8443 | HTTPS |
+| 内部 ALB | `frontend-int` | 8443 | HTTPS |
+| 两个前端的安全组 | `backend` | 8002 | HTTPS |
+| `backend` | RDS PostgreSQL | 5432 | TLS |
+| `backend` | S3 网关 Endpoint | 443 | HTTPS |
+| 三个服务 | Secrets / Logs / ECR 接口 Endpoint | 443 | HTTPS |
+| `backend` | Entra ID、Graph API | 443 出站 | HTTPS |
+
+**「两个前端 → 后端」是任务到任务直连**，按安全组互引，不是 ALB 来源 —— 后端不在任何 ALB 后面。
 
 ## AZ 提供的值（填进代码）
 
@@ -114,11 +137,37 @@
 
 **IAM 角色不用 AZ 新建**：六个角色（每服务一对执行 + 任务）由 `iam.tf` 创建。
 
-## 待确认
+## 待确认 —— 全链路 HTTPS 相关（阻塞写代码）
+
+SBP 定了「要 HTTPS、证书挂容器」，但没说怎么落地。下面四条定不下来，代码写不完。
+
+**1. 证书从哪来？**
+
+| 方案 | 影响 |
+| --- | --- |
+| ACM Private CA 签发 | 后端要权限从 ACM 导出证书，或由流水线导出后存 Secrets Manager |
+| 内部 CA 签发，人工存进 Secrets Manager | 最简单。证书到期要人工轮换 |
+| 自签 | 前端得跳过证书校验，等于只加密不验身份 |
+
+**2. 证书怎么进容器？** 本模板目前只支持 Secrets Manager 注入成环境变量。
+
+- **Secrets Manager**（推荐）：PEM 存成 secret，注入成环境变量，entrypoint 写成文件。几 KB 的证书没有大小问题，轮换只需重启任务
+- **EFS 挂载**：需要本模板加 `volumes` 支持，还要 AZ 建 EFS 和接入点
+- 打进镜像：**不行**，轮换要重新构建，证书也会留在镜像层里
+
+**3. 前端用什么主机名访问后端？** 这决定证书的 SAN，也决定服务发现方式。
+
+后端不挂 ALB，所以要有服务发现。可选 ECS Service Connect（不需要 AZ 建额外资源）或 Cloud Map。
+无论哪个，**后端证书的 SAN 必须包含前端实际使用的那个主机名**，否则 nginx 校验失败。
+
+**4. 前端是否校验后端证书？** 校验的话，前端容器还要装 CA 根证书，又是一份要挂载的文件。
+
+## 待确认 —— 其他
 
 1. ECR 仓库的 tag 可变性：`MUTABLE` 还是 `IMMUTABLE`。`IMMUTABLE` 的话 DEV/PPD 用 `latest` 覆盖不成立
 2. IAM 命名 / path 约束，是否和 `AZ-CNRDIT-` 前缀冲突
 3. 是否强制 Permissions Boundary，ARN 是多少
 4. `kms:ViaService` 在 aws-cn 的后缀形式（`iam.tf` 里两种都列了）
 5. CodeBuild 在 cn-north-1 能不能用 CodeConnections 连 GitHub
-6. 是否有 WAF、ALB 访问日志之类的安全基线要求
+6. ALB 访问日志、WAF 规则集等基线要求（WAF 本身 SBP 已明确要有）
+7. 后端调 Graph API 发邮件：Entra ID 的 client credentials 存哪个 Secret

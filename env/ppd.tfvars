@@ -24,7 +24,7 @@ services = {
     memory        = 2048
     repository    = "REPLACE_ME-frontend-ext"
     tag           = "latest"
-    port          = 80
+    port          = 8443
     desired_count = 1
 
     security_group_ids = ["sg-REPLACE_ME"]
@@ -41,7 +41,7 @@ services = {
     memory        = 2048
     repository    = "REPLACE_ME-frontend-int"
     tag           = "latest"
-    port          = 80
+    port          = 8443
     desired_count = 1
 
     security_group_ids = ["sg-REPLACE_ME"]
@@ -58,7 +58,7 @@ services = {
     memory        = 8192
     repository    = "REPLACE_ME-backend"
     tag           = "latest"
-    port          = 8080
+    port          = 8002
     desired_count = 1
 
     security_group_ids = ["sg-REPLACE_ME"]
