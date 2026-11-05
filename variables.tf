@@ -89,16 +89,28 @@ variable "services" {
     # 容器监听的端口，也是 ALB 转发的目标端口。
     port = number
 
-    # 都是 AZ 创建后给的，一服务一个。健康检查配在目标组上，不在这份代码里。
+    # AZ 创建后给的，一服务一个。
     security_group_ids = list(string)
-    target_group_arn   = string
+
+    # ALB 目标组。只有接用户流量的服务需要，健康检查配在目标组上。
+    # 不挂 ALB 的服务留 null，改用 health_check_command。
+    target_group_arn = optional(string)
+
+    # 注册进 Service Connect，供其他服务用 https://<这个名字>:<port> 访问。
+    # null 表示只作为客户端：能调别人，别人调不到它。
+    service_connect_name = optional(string)
 
     environment = optional(map(string), {})
     # 环境变量名 -> Secrets Manager ARN。密文不进 Terraform，执行角色权限按这里的 ARN 收口。
     secrets = optional(map(string), {})
 
     # nginx 这类要写 /var/cache、/var/run 的镜像必须是 false。
+    # 证书也要靠 entrypoint 落盘，所以这里不能设 true。
     readonly_root_filesystem = optional(bool, false)
+
+    # 容器健康检查命令。不挂 ALB 的服务没有这个就没有任何健康信号 ——
+    # 进程挂死但不退出时 ECS 不会替换它。要求镜像里有 curl 或 wget。
+    health_check_command = optional(string)
 
     # 业务代码访问 AWS 资源的权限。AZ 规范要求限定到项目自身资源，禁通配。
     # conditions 用于进一步收口，例如 s3:ListBucket 配 s3:prefix 只列项目自己的前缀。

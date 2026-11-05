@@ -35,7 +35,7 @@ services = {
 
     environment = {
       APP_ENV     = "ppd"
-      BACKEND_URL = "https://REPLACE_ME-backend:8002"
+      BACKEND_URL = "https://backend_service:8002"
     }
 
     # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
@@ -59,7 +59,7 @@ services = {
 
     environment = {
       APP_ENV     = "ppd"
-      BACKEND_URL = "https://REPLACE_ME-backend:8002"
+      BACKEND_URL = "https://backend_service:8002"
     }
 
     # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
@@ -79,7 +79,12 @@ services = {
     desired_count = 1
 
     security_group_ids = ["sg-REPLACE_ME"]
-    target_group_arn   = "arn:aws-cn:elasticloadbalancing:cn-north-1:REPLACE_ME:targetgroup/REPLACE_ME/REPLACE_ME"
+    # 不接用户流量，不挂 ALB。前端通过 https://backend_service:8002 访问。
+    service_connect_name = "backend_service"
+
+    # 没有 ALB 健康检查，容器健康检查是唯一的健康信号。
+    # -k 跳过自签证书校验；要求镜像里有 curl。
+    health_check_command = "curl -fsSk https://localhost:8002/health || exit 1"
 
     environment = {
       APP_ENV = "ppd"

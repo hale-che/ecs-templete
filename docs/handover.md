@@ -7,7 +7,8 @@
     公网用户  →443→  WAF + 外部 ALB  →8443 HTTPS→  frontend-ext (Nginx)
     内网用户  →443→  WAF + 内部 ALB  →8443 HTTPS→  frontend-int (Nginx)
                                                         │
-                                            8002 HTTPS  │ 任务直连，不经 ALB
+                                                        │ https://backend_service:8002
+                                                        │ ECS Service Connect，任务直连
                                                         ▼
                                                   backend (Spring Boot)
                                                         │
@@ -17,8 +18,9 @@
                       RDS                        S3 / Secrets /        Entra ID /
                    PostgreSQL                    Logs / ECR            Graph API
 
-- **全链路 HTTPS**：ALB 到前端、前端到后端都是 TLS，证书挂载进容器
-- **后端不挂 ALB**：前端到后端是任务直连，安全组按前端服务的安全组限制
+- **全链路 HTTPS**：ALB 到前端、前端到后端都是 TLS，证书由 Secrets Manager 注入容器
+- **三跳都不校验证书**，所以三张证书都可以自签，不必走 CA 流程
+- **后端不挂 ALB**：走 ECS Service Connect，主机名 `backend_service`，安全组按前端服务的安全组限制
 - 三个服务都跑 Fargate，在私有子网，不分配公网 IP
 - 一个环境一个 ECS 集群，三个服务共用
 
@@ -59,7 +61,7 @@
 | --- | --- | --- |
 | 私有子网 | ≥2，跨可用区 | 代码里有校验，少于两个直接报错 |
 | 安全组 | 3（一服务一个） | 流向见下文 |
-| ALB 目标组 | 3 | 两个前端 + 后端。健康检查路径配在这里 |
+| ALB 目标组 | **2** | 只有两个前端。后端走 Service Connect，不挂 ALB |
 
 ### D. apply 成功但任务无法启动
 
@@ -113,8 +115,7 @@
 | KMS CMK 别名或 ARN | `kms_key_id` |
 | 私有子网 ID | `subnet_ids` |
 | 3 个安全组 ID | `services.*.security_group_ids` |
-| 3 个目标组 ARN | `services.*.target_group_arn` |
-| 内部 ALB 的 DNS 名 | 两个前端的 `environment.BACKEND_URL` |
+| **2 个**目标组 ARN（只有两个前端） | `services.*.target_group_arn` |
 | 强制 Tag 的**真实键名** | `variables.tf` 的 `mandatory_tags` type + 三个 tfvars |
 | RDS 密码的 Secret ARN | `services.backend.secrets` |
 
@@ -137,52 +138,32 @@
 
 **IAM 角色不用 AZ 新建**：六个角色（每服务一对执行 + 任务）由 `iam.tf` 创建。
 
-## 待确认 —— 全链路 HTTPS 相关（阻塞写代码）
+## 全链路 HTTPS —— 已定方案
 
-SBP 定了「要 HTTPS、证书挂容器」，但没说怎么落地。第 2 条已确认，其余三条定不下来代码写不完。
-
-**1. 证书从哪来？**
-
-| 方案 | 影响 |
+| 项 | 结论 |
 | --- | --- |
-| ACM Private CA 签发 | 后端要权限从 ACM 导出证书，或由流水线导出后存 Secrets Manager |
-| 内部 CA 签发，人工存进 Secrets Manager | 最简单。证书到期要人工轮换 |
-| 自签 | 前端得跳过证书校验，等于只加密不验身份 |
+| 证书怎么进容器 | Secrets Manager 注入成环境变量，entrypoint 落盘。不用 EFS |
+| 存储格式 | PEM 用 base64 存，两个 JSON 字段 `cert` / `key` |
+| 服务发现 | ECS Service Connect，主机名 `backend_service`，三个环境同名 |
+| 是否校验证书 | **三跳都不校验** |
 
-**2. 证书怎么进容器？已定：Secrets Manager 注入，不用 EFS。**
+**不校验的直接后果：三张证书都可以自签，不需要走 CA 流程。**
+ALB 到目标本来就不校验（AWS 既定行为），前端到后端由我们显式关掉。
+代价是只做到加密、没有身份验证 —— 中间人可以冒充后端，这一点请贵方安全侧确认接受。
 
-PEM 存成 secret 的两个 JSON 字段，ECS 代理注入成环境变量 `TLS_CERT` / `TLS_KEY`，
-entrypoint 写成文件。代码侧已就绪，`services.*.secrets` 填 ARN 即可，执行角色权限自动跟着生成。
+还需要贵方提供：**证书 Secret 的 ARN**，以及**加密它的 CMK ARN**（和日志用同一把、
+或用 AWS 托管密钥则不用填）。
 
-还需要 AZ 给两样：**证书 Secret 的 ARN**，以及**加密它的 CMK ARN**（填 `secret_kms_key_arns`；
-如果和日志用的是同一把，或者用 AWS 托管密钥，就不用填）。
+两个格式要求，签发时就要满足：
 
-**PEM 内容用 base64 存**（已确认），两个 JSON 字段 `cert` / `key` 各一份，命令见 `image-requirements.md` 第 5 节。
+- **私钥是未加密的 PKCS#8**（`-----BEGIN PRIVATE KEY-----`），否则 Spring Boot 4.1 读不了
+- base64 编码时加 `-w0` 不折行
 
-后端是 Spring Boot 4.1，直接读 PEM，不用转 PKCS12。但**私钥要未加密的 PKCS#8 格式**，
-签发证书时就要跟 CA 说明，否则 Spring Boot 读不了。
+建议 **PRD 单独一张证书**。SAN 内容可以和 DEV/PPD 相同（主机名本来环境无关），但密钥分开 ——
+共用一张的话，DEV 的私钥泄露会牵连生产。
 
-**3. 前端用什么主机名访问后端？** 这决定证书的 SAN，也决定服务发现方式。
-
-后端不挂 ALB，所以必须有服务发现。建议 **ECS Service Connect** —— 它是 AWS 当前推荐的做法，
-且不需要贵方额外创建资源；Cloud Map 要把 Route53 私有托管区关联到共享 VPC，得另外开权限。
-
-主机名由我们在代码里定，建议 `backend`，三个环境同名（各有独立命名空间，不冲突）。
-
-**申请证书前先跟 CA 确认能不能签裸主机名。** 很多企业 CA 只签 FQDN，不收 `backend` 这种不带域名的。
-不能签的话现在就把名字定成 `backend.svc.internal` 这种形式 —— Service Connect 的 `dns_name`
-可以是任意字符串，不必是真实 DNS 域，照样只在集群内解析。等证书签回来才发现就要重签。
-
-**4. 前端是否校验后端证书？**
-
-`nginx` 的 `proxy_ssl_verify` **默认是 `off`**，不显式打开就不看证书内容 —— 那样全链路 HTTPS
-只做到了加密，没有身份验证，中间人可以冒充后端。贵方的安全基线认不认这个，请明确。
-
-要校验的话：证书 SAN 必须含上面那个主机名，且**前端容器还要注入签发 CA 的根证书**
-（`proxy_ssl_trusted_certificate`），那就是第三个要挂进容器的文件。
-
-**5. 证书分几张？** 建议 PRD 单独一张。SAN 内容可以和 DEV/PPD 相同（主机名本来环境无关），
-但**密钥要分开** —— 共用一张的话，DEV 的私钥泄露会直接牵连生产。
+**遗留风险：`backend_service` 带下划线。** 现在不校验所以无所谓，但下划线不是合法 DNS 主机名字符，
+将来若要开启证书校验，多数 CA 不签带下划线的 SAN，届时要改名重来。改成 `backend-service` 可以规避。
 
 ## 待确认 —— 其他
 

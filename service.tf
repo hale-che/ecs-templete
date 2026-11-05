@@ -21,14 +21,51 @@ resource "aws_ecs_service" "this" {
     assign_public_ip = false
   }
 
-  load_balancer {
-    target_group_arn = each.value.target_group_arn
-    container_name   = each.key
-    container_port   = each.value.port
+  # 服务间调用：前端用 https://<service_connect_name>:<port> 直接访问后端，不经 ALB。
+  # 每个任务会多一个 Envoy sidecar，占的是任务自己的 cpu/memory 配额。
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_http_namespace.this.arn
+
+    # 只有填了 service_connect_name 的服务对外暴露名字，其余只作为客户端。
+    dynamic "service" {
+      for_each = each.value.service_connect_name == null ? [] : [each.value.service_connect_name]
+
+      content {
+        port_name      = each.key
+        discovery_name = service.value
+
+        client_alias {
+          port     = each.value.port
+          dns_name = service.value
+        }
+      }
+    }
+
+    # Envoy 自己的日志，和业务容器共用日志组，用前缀区分。
+    log_configuration {
+      log_driver = "awslogs"
+
+      options = {
+        "awslogs-group"         = local.log_group[each.key]
+        "awslogs-region"        = var.region
+        "awslogs-stream-prefix" = "service-connect"
+      }
+    }
   }
 
-  # 给容器启动留出时间，否则第一次健康检查就把任务杀了，陷入起-杀循环。
-  health_check_grace_period_seconds = 60
+  dynamic "load_balancer" {
+    for_each = each.value.target_group_arn == null ? [] : [each.value.target_group_arn]
+
+    content {
+      target_group_arn = load_balancer.value
+      container_name   = each.key
+      container_port   = each.value.port
+    }
+  }
+
+  # 只在挂了 ALB 时有意义：给容器启动留时间，否则第一次健康检查就把任务杀了。
+  health_check_grace_period_seconds = each.value.target_group_arn == null ? null : 60
 
   # 滚动更新：先起新任务再停旧的，更新期间容量不下降。
   deployment_minimum_healthy_percent = 100
@@ -49,5 +86,11 @@ resource "aws_ecs_service" "this" {
     # task_definition：CodeBuild 发版会把服务指到新 revision，不忽略的话下次 apply 会拽回来。
     # desired_count：Auto Scaling 会改它。
     ignore_changes = [task_definition, desired_count]
+
+    # 不挂 ALB 又没有容器健康检查的话，进程挂死不退出时 ECS 不会替换它。
+    precondition {
+      condition     = each.value.target_group_arn != null || each.value.health_check_command != null
+      error_message = "服务 ${each.key} 既没挂 ALB 目标组、也没给 health_check_command，等于没有任何健康检查。"
+    }
   }
 }

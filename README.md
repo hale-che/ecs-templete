@@ -101,14 +101,15 @@ revision 不可变，state 里那个一直存在，CodeBuild 新注册的不算�
 
 ## 流量路径与健康检查
 
-    外部 ALB → frontend-ext
-    内部 ALB → frontend-int   （路径 /）
-             → backend        （路径 /api）
+    外部 ALB  →8443 HTTPS→  frontend-ext
+    内部 ALB  →8443 HTTPS→  frontend-int
+                              └─8002 HTTPS─→  backend   （Service Connect，不经 ALB）
 
-三个服务都挂 ALB 目标组，**健康检查全部由目标组做，配在 ALB 那边，不在这份代码里**。
-所以这里没有容器健康检查，镜像也不需要 `curl`。
+全链路 HTTPS，证书由 Secrets Manager 注入容器，三跳都不校验证书。
 
-前端调后端走内部 ALB，地址从 `environment` 里的 `BACKEND_URL` 注入，分环境。
+- 两个前端挂 ALB 目标组，健康检查由目标组做，配在 ALB 那边
+- **后端不挂 ALB**，健康检查靠 `health_check_command`，所以**后端镜像里必须有 `curl`**
+- 前端调后端用 `https://backend_service:8002`，三个环境同名
 
 ## 暂不支持
 

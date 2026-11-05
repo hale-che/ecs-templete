@@ -51,11 +51,11 @@ nginx 不会自己读环境变量，镜像要在 entrypoint 里做一次替换�
       set $upstream "${BACKEND_URL}";     # 变量形式才会重新解析
       proxy_pass $upstream;
       proxy_ssl_server_name on;           # 后端是 HTTPS，SNI 要带上
+      proxy_ssl_verify off;               # 不校验后端证书（这也是默认值，写出来明确意图）
     }
 
-直接写 `proxy_pass https://backend:8002/` 是启动时解析一次的写法，**不要用**。
-
-（如果最后定了用 ECS Service Connect，Envoy 会接管端点变化，这段可以简化 —— 服务发现方式还没定。）
+后端走 ECS Service Connect，Envoy 会接管端点变化，所以 `resolver` 不是必需的 ——
+但留着无害，而且万一以后换服务发现方式不用改。
 
 ## 5. TLS 证书从环境变量写成文件
 
@@ -155,6 +155,6 @@ CA 给的是 PKCS#1（`-----BEGIN RSA PRIVATE KEY-----`）或者带密码的话�
 
 - **非 root 运行**：Dockerfile 里写 `USER`，安全扫描常卡这条。
 - **密码不打进镜像层**：敏感值放 Secrets Manager，在 tfvars 的 `secrets` 里引用。非敏感配置放 `environment`。
-- **健康检查端点**：两个前端要提供 **HTTPS** 端点（如 `/health`），由 ALB 目标组检查，路径和 AZ 配的目标组一致。后端不挂 ALB，健康检查方式待定。
+- **健康检查端点**：三个服务都要提供 **HTTPS** 的 `/health`。前端由 ALB 目标组检查；**后端不挂 ALB，靠容器健康检查，所以后端镜像里必须有 `curl`** —— 命令是 `curl -fsSk https://localhost:8002/health`，`-k` 是跳过自签证书校验。没有 curl 会变成无限 crashloop。
 - **基础镜像来源待确认**：cn-north-1 直连 Docker Hub 不稳，内部是否有 artifact 镜像源要问 AZ。
 - **镜像不要太大**：Fargate 临时盘 20 GiB（模板没开 `ephemeral_storage`），大镜像还会拖慢扩容时的拉取。

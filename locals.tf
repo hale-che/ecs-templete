@@ -46,16 +46,19 @@ locals {
     k => distinct([for a in values(s.secrets) : join(":", slice(split(":", a), 0, 7))])
   }
 
-  # 没有容器健康检查：三个服务都挂 ALB，健康检查由目标组做。
-  container_definitions = {
-    for k, s in var.services : k => [{
+  container_base = {
+    for k, s in var.services : k => {
       name      = k
       image     = "${local.ecr_registry}/${s.repository}:${s.tag}"
       essential = true
 
       readonlyRootFilesystem = s.readonly_root_filesystem
 
+      # name 是 Service Connect 引用端口的方式，不能省。
+      # 不设 appProtocol：应用自己终止 TLS，Envoy 要走 L4 透传，
+      # 设成 http 它会试图解析加密流量，连接建得起来但请求全失败。
       portMappings = [{
+        name          = k
         containerPort = s.port
         protocol      = "tcp"
       }]
@@ -71,6 +74,22 @@ locals {
           "awslogs-stream-prefix" = k
         }
       }
-    }]
+    }
+  }
+
+  # 用 merge 追加而不是写 healthCheck = null：ECS 不接受显式 null 的容器属性。
+  container_definitions = {
+    for k, s in var.services : k => [merge(
+      local.container_base[k],
+      s.health_check_command == null ? {} : {
+        healthCheck = {
+          command     = ["CMD-SHELL", s.health_check_command]
+          interval    = 30
+          timeout     = 5
+          retries     = 3
+          startPeriod = 60
+        }
+      },
+    )]
   }
 }

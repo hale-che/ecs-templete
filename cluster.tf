@@ -10,3 +10,11 @@ resource "aws_ecs_cluster" "this" {
 
   tags = { Name = local.cluster_name }
 }
+
+# Service Connect 的命名空间。服务间调用靠它解析，不经 ALB。
+resource "aws_service_discovery_http_namespace" "this" {
+  name        = lower(local.cluster_name)
+  description = "Service Connect namespace for ${local.cluster_name}. Managed by Terraform."
+
+  tags = { Name = lower(local.cluster_name) }
+}
