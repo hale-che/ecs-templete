@@ -94,7 +94,7 @@ data "aws_iam_policy_document" "execution" {
     sid       = "DecryptViaOwningServices"
     effect    = "Allow"
     actions   = ["kms:Decrypt"]
-    resources = [local.kms_key_arn]
+    resources = distinct(concat([local.kms_key_arn], var.secret_kms_key_arns))
 
     condition {
       test     = "StringEquals"

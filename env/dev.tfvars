@@ -15,6 +15,9 @@ kms_key_id         = "alias/REPLACE_ME"
 log_retention_days = 30
 
 # AZ 提供的私有子网，跨可用区至少两个。
+# 证书 Secret 用的 CMK，和日志那把不是同一把时必须给。
+secret_kms_key_arns = ["arn:aws-cn:kms:cn-north-1:REPLACE_ME:key/REPLACE_ME"]
+
 subnet_ids = [
   "subnet-REPLACE_ME-az-a",
   "subnet-REPLACE_ME-az-b",
@@ -36,9 +39,16 @@ services = {
 
     environment = {
       APP_ENV = "dev"
-      # nginx 反代 /api 的上游，内部 ALB 的 DNS 名，AZ 建好后给。
-      # 变量名要和镜像里 nginx 模板用的一致。
-      BACKEND_URL = "http://REPLACE_ME-internal-alb"
+      # nginx 反代 /api 的上游。后端不挂 ALB，这个主机名取决于服务发现方式（待定），
+      # 而且必须和后端证书的 SAN 一致，否则 nginx 校验失败。
+      BACKEND_URL = "https://REPLACE_ME-backend:8002"
+    }
+
+    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
+    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
+    secrets = {
+      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
+      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
     }
   }
 
@@ -55,7 +65,14 @@ services = {
 
     environment = {
       APP_ENV     = "dev"
-      BACKEND_URL = "http://REPLACE_ME-internal-alb"
+      BACKEND_URL = "https://REPLACE_ME-backend:8002"
+    }
+
+    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
+    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
+    secrets = {
+      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
+      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
     }
   }
 
@@ -75,6 +92,11 @@ services = {
     }
 
     # 环境变量名 -> Secrets Manager ARN。执行角色权限自动按这里的 ARN 收口。
-    secrets = {}
+    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
+    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
+    secrets = {
+      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
+      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
+    }
   }
 }

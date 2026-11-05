@@ -13,6 +13,9 @@ mandatory_tags = {
 kms_key_id         = "alias/REPLACE_ME"
 log_retention_days = 90
 
+# 证书 Secret 用的 CMK，和日志那把不是同一把时必须给。
+secret_kms_key_arns = ["arn:aws-cn:kms:cn-north-1:REPLACE_ME:key/REPLACE_ME"]
+
 subnet_ids = [
   "subnet-REPLACE_ME-az-a",
   "subnet-REPLACE_ME-az-b",
@@ -32,7 +35,14 @@ services = {
 
     environment = {
       APP_ENV     = "ppd"
-      BACKEND_URL = "http://REPLACE_ME-internal-alb"
+      BACKEND_URL = "https://REPLACE_ME-backend:8002"
+    }
+
+    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
+    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
+    secrets = {
+      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
+      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
     }
   }
 
@@ -49,7 +59,14 @@ services = {
 
     environment = {
       APP_ENV     = "ppd"
-      BACKEND_URL = "http://REPLACE_ME-internal-alb"
+      BACKEND_URL = "https://REPLACE_ME-backend:8002"
+    }
+
+    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
+    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
+    secrets = {
+      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
+      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
     }
   }
 
@@ -68,6 +85,11 @@ services = {
       APP_ENV = "ppd"
     }
 
-    secrets = {}
+    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
+    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
+    secrets = {
+      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
+      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
+    }
   }
 }
