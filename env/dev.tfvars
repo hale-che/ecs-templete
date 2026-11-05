@@ -41,7 +41,7 @@ services = {
       APP_ENV = "dev"
       # nginx 反代 /api 的上游，Service Connect 的名字，三个环境一样。
       # 不校验后端证书，所以 SAN 不构成约束。
-      BACKEND_URL = "https://backend_service:8002"
+      BACKEND_URL = "https://backend-service:8002"
     }
 
     # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
@@ -65,7 +65,7 @@ services = {
 
     environment = {
       APP_ENV     = "dev"
-      BACKEND_URL = "https://backend_service:8002"
+      BACKEND_URL = "https://backend-service:8002"
     }
 
     # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
@@ -85,8 +85,8 @@ services = {
     desired_count = 1
 
     security_group_ids = ["sg-REPLACE_ME"]
-    # 不接用户流量，不挂 ALB。前端通过 https://backend_service:8002 访问。
-    service_connect_name = "backend_service"
+    # 不接用户流量，不挂 ALB。前端通过 https://backend-service:8002 访问。
+    service_connect_name = "backend-service"
 
     # 没有 ALB 健康检查，容器健康检查是唯一的健康信号。
     # -k 跳过自签证书校验；要求镜像里有 curl。

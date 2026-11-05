@@ -7,7 +7,7 @@
     公网用户  →443→  WAF + 外部 ALB  →8443 HTTPS→  frontend-ext (Nginx)
     内网用户  →443→  WAF + 内部 ALB  →8443 HTTPS→  frontend-int (Nginx)
                                                         │
-                                                        │ https://backend_service:8002
+                                                        │ https://backend-service:8002
                                                         │ ECS Service Connect，任务直连
                                                         ▼
                                                   backend (Spring Boot)
@@ -20,7 +20,7 @@
 
 - **全链路 HTTPS**：ALB 到前端、前端到后端都是 TLS，证书由 Secrets Manager 注入容器
 - **三跳都不校验证书**，所以三张证书都可以自签，不必走 CA 流程
-- **后端不挂 ALB**：走 ECS Service Connect，主机名 `backend_service`，安全组按前端服务的安全组限制
+- **后端不挂 ALB**：走 ECS Service Connect，主机名 `backend-service`，安全组按前端服务的安全组限制
 - 三个服务都跑 Fargate，在私有子网，不分配公网 IP
 - 一个环境一个 ECS 集群，三个服务共用
 
@@ -144,7 +144,7 @@
 | --- | --- |
 | 证书怎么进容器 | Secrets Manager 注入成环境变量，entrypoint 落盘。不用 EFS |
 | 存储格式 | PEM 用 base64 存，两个 JSON 字段 `cert` / `key` |
-| 服务发现 | ECS Service Connect，主机名 `backend_service`，三个环境同名 |
+| 服务发现 | ECS Service Connect，主机名 `backend-service`，三个环境同名 |
 | 是否校验证书 | **三跳都不校验** |
 
 **不校验的直接后果：三张证书都可以自签，不需要走 CA 流程。**
@@ -162,8 +162,8 @@ ALB 到目标本来就不校验（AWS 既定行为），前端到后端由我们
 建议 **PRD 单独一张证书**。SAN 内容可以和 DEV/PPD 相同（主机名本来环境无关），但密钥分开 ——
 共用一张的话，DEV 的私钥泄露会牵连生产。
 
-**遗留风险：`backend_service` 带下划线。** 现在不校验所以无所谓，但下划线不是合法 DNS 主机名字符，
-将来若要开启证书校验，多数 CA 不签带下划线的 SAN，届时要改名重来。改成 `backend-service` 可以规避。
+主机名用连字符而不是下划线，是为了留后路：`backend-service` 是合法 DNS 主机名，
+将来若要开启证书校验，直接申请一张 SAN 为 `backend-service` 的证书即可，不用改名重来。
 
 ## 待确认 —— 其他
 

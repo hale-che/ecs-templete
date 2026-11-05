@@ -109,7 +109,7 @@ revision 不可变，state 里那个一直存在，CodeBuild 新注册的不算�
 
 - 两个前端挂 ALB 目标组，健康检查由目标组做，配在 ALB 那边
 - **后端不挂 ALB**，健康检查靠 `health_check_command`，所以**后端镜像里必须有 `curl`**
-- 前端调后端用 `https://backend_service:8002`，三个环境同名
+- 前端调后端用 `https://backend-service:8002`，三个环境同名
 
 ## 暂不支持
 
