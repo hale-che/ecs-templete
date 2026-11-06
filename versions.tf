@@ -8,6 +8,6 @@ terraform {
     }
   }
 
-  # 留空：bucket / key 由 `terraform init -backend-config=...` 分环境传入。
   backend "s3" {}
 }
+
