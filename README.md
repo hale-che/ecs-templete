@@ -2,7 +2,7 @@
 
 三个服务（`frontend-ext` / `frontend-int` / `backend`）的 Task Definition，区域 `cn-north-1`。
 
-管：ECS 集群、三个服务、Task Definition、KMS 加密日志组、每服务一对 IAM 角色、PRD 的自动扩缩容。
+管：ECS 集群、三个服务、Task Definition、日志组、每服务一对 IAM 角色、PRD 的自动扩缩容。
 不管：安全组、ALB / 目标组 / 监听器、ECR 仓库、RDS、CodeBuild。前三样由 AZ 创建，ID 填进 tfvars。
 
 apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任务在跑。
@@ -15,7 +15,6 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | --- | --- |
 | `project` | 项目标识，小写，≤20 字符 |
 | `mandatory_tags` | AZ 下发的五个字段 |
-| `kms_key_id` | KMS 别名，如 `alias/xxx` |
 | `repository` ×3 | 三个 ECR 仓库名 |
 | `tag` ×3 | 只有 PRD 要填，DEV/PPD 是 `latest` |
 | `subnet_ids` | AZ 给的私有子网，≥2 个 |
@@ -66,10 +65,10 @@ DEV / PPD 不填 `min_capacity`/`max_capacity`，所以不建 Auto Scaling，任
 | 禁止硬编码 | 环境差异只在 `env/*.tfvars` |
 | 命名规范 | `AZ-CNRDIT-<ENV>-<project>-<服务名>` |
 | 最小权限 IAM | 每服务一对角色，ARN 按该服务自己的仓库和密钥收口 |
-| IAM 条件限制 | 信任策略带 `aws:SourceAccount` / `aws:SourceArn`，KMS 带 `kms:ViaService` |
+| IAM 条件限制 | 信任策略带 `aws:SourceAccount` / `aws:SourceArn` |
 | 强制 Tag | 五个字段必填且不许留空，走 `default_tags` |
-| KMS 加密 | 日志组强制 CMK |
 | 密码不硬编码 | 只传 Secret ARN，密文不进 state |
+| 加密 | 日志和密钥都用 AWS 托管密钥，不配自管 CMK |
 
 `mandatory_tags` 的键名是我按理解写的，**拿到 AZ 清单后要核对改名**。IAM 权限清单见 `docs/iam-permissions.md`。
 
@@ -135,7 +134,7 @@ B 还必须带 `--include TAGS`，否则新 revision 丢掉强制 Tag。
 
 换环境只换 `-var-file` 和 backend 的 `key`。
 
-前置：S3 bucket 和 DynamoDB 锁表已存在（1.6 没有 `use_lockfile`）；KMS CMK plan 时必须已存在，且 Key Policy 允许 `logs.<region>.amazonaws.com`。ECR 仓库不要求 plan 时存在。
+前置：S3 bucket 和 DynamoDB 锁表已存在（1.6 没有 `use_lockfile`）。ECR 仓库不要求 plan 时存在。
 
 ## 流量路径与健康检查
 
@@ -166,4 +165,3 @@ B 还必须带 `--include TAGS`，否则新 revision 丢掉强制 Tag。
 - 任务起不来且报 AssumeRole 失败时，先看 `iam.tf` 里信任策略的 `aws:SourceArn` 条件。
 - 改服务名（map 的 key）等于删一个建一个，角色和日志组一起重建。
 - `ecr:GetAuthorizationToken` 只能用 `*`，API 不支持限定，安全扫描会报，走风险申请。
-- `kms:ViaService` 在 aws-cn 的后缀没确认，`iam.tf` 里两种都列了，确认后删掉错的那组。

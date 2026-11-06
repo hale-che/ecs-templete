@@ -10,11 +10,7 @@ mandatory_tags = {
   CostCenter   = "REPLACE_ME"
 }
 
-kms_key_id         = "alias/REPLACE_ME"
 log_retention_days = 90
-
-# 证书 Secret 用的 CMK，和日志那把不是同一把时必须给。
-secret_kms_key_arns = ["arn:aws-cn:kms:cn-north-1:REPLACE_ME:key/REPLACE_ME"]
 
 subnet_ids = [
   "subnet-REPLACE_ME-az-a",

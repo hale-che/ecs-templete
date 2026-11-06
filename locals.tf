@@ -2,16 +2,9 @@ data "aws_caller_identity" "current" {}
 
 data "aws_partition" "current" {}
 
-# 别名/Key ID 都能解析成 ARN。IAM 策略和日志组都要真实 ARN，别名 ARN 不行。
-data "aws_kms_key" "this" {
-  key_id = var.kms_key_id
-}
-
 locals {
   partition   = data.aws_partition.current.partition
   account_id  = data.aws_caller_identity.current.account_id
-  kms_key_arn = data.aws_kms_key.this.arn
-
   # aws-cn 下 dns_suffix 是 amazonaws.com.cn，手写最容易漏掉那个 .cn。
   ecr_registry = "${local.account_id}.dkr.ecr.${var.region}.${data.aws_partition.current.dns_suffix}"
 

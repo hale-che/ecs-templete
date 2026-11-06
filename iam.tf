@@ -88,25 +88,6 @@ data "aws_iam_policy_document" "execution" {
     }
   }
 
-  # KMS 不支持按密钥内容限定，用 ViaService 限制只能经这两个服务解密。
-  # aws-cn 分区的 ViaService 后缀待确认，两种都列上；确认后删掉不对的那组。
-  statement {
-    sid       = "DecryptViaOwningServices"
-    effect    = "Allow"
-    actions   = ["kms:Decrypt"]
-    resources = distinct(concat([local.kms_key_arn], var.secret_kms_key_arns))
-
-    condition {
-      test     = "StringEquals"
-      variable = "kms:ViaService"
-      values = [
-        "secretsmanager.${var.region}.amazonaws.com",
-        "secretsmanager.${var.region}.amazonaws.com.cn",
-        "logs.${var.region}.amazonaws.com",
-        "logs.${var.region}.amazonaws.com.cn",
-      ]
-    }
-  }
 }
 
 resource "aws_iam_role_policy" "execution" {
