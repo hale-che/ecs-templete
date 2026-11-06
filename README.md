@@ -96,7 +96,7 @@ DEV / PPD 不填 `min_capacity`/`max_capacity`，所以不建 Auto Scaling，任
 第 2、3 步漏了的表现分别是 `ResourceInitializationError`（取不到密钥）和
 `CannotPullContainerError`（拉不到镜像），都只在任务启动时暴露，plan 和 apply 都不报。
 
-### 之后发版，两种方式代码都支持
+### 之后发版
 
 | | A 覆盖同 tag | B 注册新 revision |
 | --- | --- | --- |
@@ -125,15 +125,17 @@ B 还必须带 `--include TAGS`，否则新 revision 丢掉强制 Tag。
 改 Secrets Manager 里的值 → `update-service --force-new-deployment` → 新任务拿到新证书。
 不用改 Terraform，不用重新打镜像。
 
-## 为什么 Terraform 和发版互不干扰
+## Terraform 与发版的边界
 
-两个设置撑着这件事，改动它们会直接破坏上面的流程：
+Terraform 管配置，CodeBuild 管镜像和部署，互不覆盖。靠两个设置撑着：
 
 - **Task Definition 不设 `ignore_changes`，但 `track_latest` 必须是 `false`。**
   revision 不可变，state 里记的那个一直存在，CodeBuild 新注册的 revision 在 plan 里根本不出现。
   `track_latest = true` 会变成按 family 读最新，于是天天有偏移。
 - **服务设 `ignore_changes = [task_definition, desired_count]`。**
   前者让 CodeBuild 指定的 revision 不被 apply 拽回去，后者让 Auto Scaling 能改任务数。
+
+改动这两处会直接破坏上面的发布流程。
 
 ## 应用文件桶
 
