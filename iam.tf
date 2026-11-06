@@ -113,14 +113,38 @@ resource "aws_iam_role" "task" {
 }
 
 locals {
-  # 没有自定义权限的服务不建空策略，空的 policy document 会被 API 拒绝。
+  # 没有任何权限的服务不建空策略，空的 policy document 会被 API 拒绝。
   services_with_task_policy = {
-    for k, s in var.services : k => s if length(s.task_role_policy_statements) > 0
+    for k, s in var.services : k => s
+    if length(s.task_role_policy_statements) > 0 || s.file_bucket_access
   }
 }
 
 data "aws_iam_policy_document" "task" {
   for_each = local.services_with_task_policy
+
+  # 文件桶：对象操作限到桶内，ListBucket 的资源只能是桶本身，所以不能带 /*。
+  dynamic "statement" {
+    for_each = each.value.file_bucket_access ? [1] : []
+
+    content {
+      sid       = "ReadWriteFileBucketObjects"
+      effect    = "Allow"
+      actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion"]
+      resources = ["${aws_s3_bucket.files.arn}/*"]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.file_bucket_access ? [1] : []
+
+    content {
+      sid       = "ListFileBucket"
+      effect    = "Allow"
+      actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
+      resources = [aws_s3_bucket.files.arn]
+    }
+  }
 
   dynamic "statement" {
     for_each = each.value.task_role_policy_statements
@@ -150,4 +174,107 @@ resource "aws_iam_role_policy" "task" {
   name   = "${local.name[each.key]}-ecs-task-policy"
   role   = aws_iam_role.task[each.key].id
   policy = data.aws_iam_policy_document.task[each.key].json
+}
+
+# ---------------------------------------------------------------------------
+# CodeBuild 服务角色
+# ---------------------------------------------------------------------------
+
+data "aws_iam_policy_document" "codebuild_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["codebuild.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+}
+
+resource "aws_iam_role" "codebuild" {
+  for_each = var.services
+
+  name               = "${local.name[each.key]}-build-role"
+  description        = "CodeBuild role for ${local.name[each.key]}. Managed by Terraform."
+  assume_role_policy = data.aws_iam_policy_document.codebuild_assume.json
+
+  tags = { Name = "${local.name[each.key]}-build-role" }
+}
+
+data "aws_iam_policy_document" "codebuild" {
+  for_each = var.services
+
+  statement {
+    sid       = "WriteOwnBuildLogs"
+    effect    = "Allow"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = [local.build_log_stream_arn[each.key]]
+  }
+
+  # ECR 登录令牌是账号级操作，API 不接受资源限定。
+  statement {
+    sid       = "EcrAuth"
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "EcrPushOwnRepo"
+    effect = "Allow"
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:InitiateLayerUpload",
+      "ecr:UploadLayerPart",
+      "ecr:CompleteLayerUpload",
+      "ecr:PutImage",
+      "ecr:BatchGetImage",
+      "ecr:DescribeImages",
+    ]
+    resources = [local.ecr_arn[each.key]]
+  }
+
+  statement {
+    sid       = "DeployOwnService"
+    effect    = "Allow"
+    actions   = ["ecs:UpdateService", "ecs:DescribeServices"]
+    resources = [local.service_arn[each.key]]
+  }
+
+  # 方案 B（注册新 revision）才需要下面两条。定了方案 A 就删掉。
+  # Task Definition 的 API 不支持资源限定，只能是 "*"。
+  statement {
+    sid       = "RegisterTaskDefinition"
+    effect    = "Allow"
+    actions   = ["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "PassExecutionAndTaskRoles"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = [aws_iam_role.execution[each.key].arn, aws_iam_role.task[each.key].arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "codebuild" {
+  for_each = var.services
+
+  name   = "${local.name[each.key]}-build-policy"
+  role   = aws_iam_role.codebuild[each.key].id
+  policy = data.aws_iam_policy_document.codebuild[each.key].json
 }

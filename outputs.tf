@@ -39,3 +39,18 @@ output "image_urls" {
   description = "推导出的完整镜像地址，CodeBuild push 时直接用，不用自己拼 .com.cn。"
   value       = { for k, s in var.services : k => "${local.ecr_registry}/${s.repository}:${s.tag}" }
 }
+
+output "codebuild_projects" {
+  description = "CodeBuild 项目名。手工触发：aws codebuild start-build --project-name <名字>。"
+  value       = { for k, v in aws_codebuild_project.build : k => v.name }
+}
+
+output "file_bucket" {
+  description = "应用文件桶。Intelligent-Tiering，内置 30 天转 IA、90 天转 Archive Instant Access。"
+  value       = aws_s3_bucket.files.bucket
+}
+
+output "tls_secret_arn" {
+  description = "TLS 证书的 Secret。Terraform 只建容器，值要手工填，见 README。"
+  value       = aws_secretsmanager_secret.tls.arn
+}

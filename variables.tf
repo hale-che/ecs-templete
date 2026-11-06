@@ -7,9 +7,11 @@ variable "project" {
   description = "项目标识，命名规范 AZ-CNRDIT-<ENV>-<project>-<服务名> 的第三段。"
   type        = string
 
+  # 18 是算出来的：AZ-CNRDIT-PPD- (14) + project + -frontend-ext (13)
+  # + -ecs-execution-role (19) 不能超过 IAM 角色名的 64 字符上限。
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,19}$", var.project))
-    error_message = "project 只能用小写字母、数字和连字符，2-20 位。太长会把 IAM 角色名顶过 64 字符。"
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,17}$", var.project))
+    error_message = "project 只能用小写字母、数字和连字符，2-18 位。再长会把 IAM 角色名顶过 64 字符。"
   }
 }
 
@@ -46,6 +48,21 @@ variable "log_retention_days" {
   default     = 30
 }
 
+variable "file_bucket_name" {
+  description = "应用文件桶的名字。null 表示按 az-cnrdit-<env>-<project>-files 推导。S3 桶名全局唯一，撞名才需要显式给。"
+  type        = string
+  default     = null
+}
+
+variable "enable_build_webhook" {
+  description = <<-EOT
+    GitHub push 自动触发构建。生产默认关闭 —— 推一次代码就发一次生产不是好主意。
+    开启前账号里要先有 GitHub 凭证，见 README。
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "subnet_ids" {
   description = "AZ 提供的私有子网，任务起在这里面。跨可用区至少给两个。"
   type        = list(string)
@@ -66,6 +83,16 @@ variable "services" {
     # ECR 仓库名。镜像地址和执行角色的拉取权限都从这里推。
     repository = string
     tag        = string
+
+    # GitHub 仓库地址，CodeBuild 的源。两个服务同仓库的话填一样的。
+    repo_url = string
+    branch   = optional(string, "main")
+
+    # npm 和 Java 构建吃内存，不够就换 BUILD_GENERAL1_MEDIUM。
+    build_compute_type = optional(string, "BUILD_GENERAL1_SMALL")
+
+    # 给任务角色加文件桶的读写权限。按 SBP 只有后端需要。
+    file_bucket_access = optional(bool, false)
 
     # 容器监听的端口，也是 ALB 转发的目标端口。
     port = number

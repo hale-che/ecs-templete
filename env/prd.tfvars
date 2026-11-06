@@ -10,6 +10,9 @@ mandatory_tags = {
   CostCenter   = "REPLACE_ME"
 }
 
+# 不自动触发，构建由人工或外部流水线发起。
+enable_build_webhook = false
+
 log_retention_days = 365
 
 subnet_ids = [
@@ -23,6 +26,7 @@ services = {
     cpu           = 1024 # 1 vCPU × 2 个任务
     memory        = 2048
     repository    = "REPLACE_ME-frontend-ext"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-frontend-ext.git"
     tag           = "REPLACE_ME"
     port          = 8443
     desired_count = 2
@@ -37,18 +41,13 @@ services = {
       BACKEND_URL = "https://backend-service:8002"
     }
 
-    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
-    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
-    secrets = {
-      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
-      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
-    }
   }
 
   "frontend-int" = {
     cpu           = 1024
     memory        = 2048
     repository    = "REPLACE_ME-frontend-int"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-frontend-int.git"
     tag           = "REPLACE_ME"
     port          = 8443
     desired_count = 2
@@ -63,18 +62,16 @@ services = {
       BACKEND_URL = "https://backend-service:8002"
     }
 
-    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
-    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
-    secrets = {
-      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
-      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
-    }
   }
 
   "backend" = {
     cpu           = 4096 # 4 vCPU × 2 个任务
     memory        = 8192
     repository    = "REPLACE_ME-backend"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-backend.git"
+
+    # 后端读写应用文件桶，任务角色权限自动生成。
+    file_bucket_access = true
     tag           = "REPLACE_ME"
     port          = 8002
     desired_count = 2
@@ -93,11 +90,8 @@ services = {
       APP_ENV = "prd"
     }
 
-    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
-    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
-    secrets = {
-      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
-      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
-    }
+    # TLS 证书由 Terraform 自动注入，不用在这里写。
+    # 这里只放 AZ 给的密钥，比如 RDS 密码：
+    #   secrets = { DB_PASSWORD = "arn:aws-cn:secretsmanager:...:secret:xxx-AbCdEf:password::" }
   }
 }
