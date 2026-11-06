@@ -28,6 +28,16 @@ locals {
     k => "arn:${local.partition}:ecr:${var.region}:${local.account_id}:repository/${s.repository}"
   }
 
+  service_arn = {
+    for k, v in local.name :
+    k => "arn:${local.partition}:ecs:${var.region}:${local.account_id}:service/${local.cluster_name}/${v}"
+  }
+
+  build_log_stream_arn = {
+    for k, v in local.name :
+    k => "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:/aws/codebuild/${v}:log-stream:*"
+  }
+
   log_stream_arn = {
     for k, v in local.log_group :
     k => "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:${v}:log-stream:*"

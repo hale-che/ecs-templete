@@ -2,8 +2,8 @@
 
 三个服务（`frontend-ext` / `frontend-int` / `backend`）的 Task Definition，区域 `cn-north-1`。
 
-管：ECS 集群、三个服务、Task Definition、日志组、每服务一对 IAM 角色、PRD 的自动扩缩容。
-不管：安全组、ALB / 目标组 / 监听器、ECR 仓库、RDS、CodeBuild。前三样由 AZ 创建，ID 填进 tfvars。
+管：ECS 集群、三个服务、Task Definition、日志组、CodeBuild 项目、每服务的 IAM 角色、PRD 的自动扩缩容。
+不管：安全组、ALB / 目标组 / 监听器、ECR 仓库、RDS。前三样由 AZ 创建，ID 填进 tfvars。
 
 apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任务在跑。
 
@@ -19,7 +19,8 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | `tag` ×3 | 只有 PRD 要填，DEV/PPD 是 `latest` |
 | `subnet_ids` | AZ 给的私有子网，≥2 个 |
 | `security_group_ids` ×3 | AZ 给的安全组 |
-| `target_group_arn` ×3 | AZ 给的目标组 |
+| `target_group_arn` ×2 | AZ 给的目标组，只有两个前端 |
+| `repo_url` ×3 | GitHub 仓库地址 |
 
 其余字段都不用动。规格（CPU / 内存 / 任务数）已经按确认过的表填好了。
 
@@ -38,6 +39,7 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
     autoscaling.tf  PRD 的 2-4 扩缩容，只给填了 min/max 的服务建
     iam.tf          执行角色 + 任务角色
     logs.tf         日志组
+    codebuild.tf    每服务一个构建项目 + webhook
     outputs.tf      按服务名索引
     env/*.tfvars    DEV / PPD / PRD，唯一有环境差异的地方
     docs/           IAM 权限需求、交接清单、镜像要求
@@ -120,6 +122,32 @@ B 还必须带 `--include TAGS`，否则新 revision 丢掉强制 Tag。
   `track_latest = true` 会变成按 family 读最新，于是天天有偏移。
 - **服务设 `ignore_changes = [task_definition, desired_count]`。**
   前者让 CodeBuild 指定的 revision 不被 apply 拽回去，后者让 Auto Scaling 能改任务数。
+
+## CodeBuild
+
+一个服务一个项目，`for_each` 出来。**buildspec 放应用仓库**，Terraform 只注入它要的值：
+
+| 环境变量 | 内容 |
+| --- | --- |
+| `ECR_REPO` | 完整镜像地址，不含 tag |
+| `IMAGE_TAG` | tfvars 里的 `tag`。方案 B 可改用 CodeBuild 自带的 `CODEBUILD_RESOLVED_SOURCE_VERSION`（git sha） |
+| `CLUSTER` / `SERVICE` | 部署目标 |
+| `TASK_FAMILY` | 方案 B 注册新 revision 用 |
+
+**GitHub 凭证是账号级的，Terraform 不管** —— 一次性手工建，避免 token 落进 state：
+
+    aws codebuild import-source-credentials --server-type GITHUB \
+      --auth-type PERSONAL_ACCESS_TOKEN --token <PAT>
+
+没有这一步，构建拉不到代码，webhook 也建不出来。
+
+**触发**：`enable_build_webhook` 只在 DEV 开（推 `dev` 分支自动构建部署）。
+PPD / PRD 关闭，手工或外部流水线触发：
+
+    aws codebuild start-build --project-name <terraform output codebuild_projects>
+
+**IAM 按方案 B 的权限写的**（B 是 A 的超集）。定了方案 A 就删 `iam.tf` 里
+`RegisterTaskDefinition` 和 `PassExecutionAndTaskRoles` 两条语句。
 
 ## 执行
 

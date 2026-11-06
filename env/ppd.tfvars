@@ -10,6 +10,9 @@ mandatory_tags = {
   CostCenter   = "REPLACE_ME"
 }
 
+# 不自动触发，构建由人工或外部流水线发起。
+enable_build_webhook = false
+
 log_retention_days = 90
 
 subnet_ids = [
@@ -22,6 +25,7 @@ services = {
     cpu           = 1024 # 1 vCPU
     memory        = 2048
     repository    = "REPLACE_ME-frontend-ext"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-frontend-ext.git"
     tag           = "latest"
     port          = 8443
     desired_count = 1
@@ -46,6 +50,7 @@ services = {
     cpu           = 1024
     memory        = 2048
     repository    = "REPLACE_ME-frontend-int"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-frontend-int.git"
     tag           = "latest"
     port          = 8443
     desired_count = 1
@@ -70,6 +75,7 @@ services = {
     cpu           = 2048 # 2 vCPU
     memory        = 8192
     repository    = "REPLACE_ME-backend"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-backend.git"
     tag           = "latest"
     port          = 8002
     desired_count = 1

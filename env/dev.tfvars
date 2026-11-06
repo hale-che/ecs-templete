@@ -11,6 +11,9 @@ mandatory_tags = {
   CostCenter   = "REPLACE_ME"
 }
 
+# DEV 推 dev 分支自动构建部署。
+enable_build_webhook = true
+
 log_retention_days = 30
 
 # AZ 提供的私有子网，跨可用区至少两个。
@@ -26,6 +29,8 @@ services = {
     cpu           = 512 # 0.5 vCPU
     memory        = 1024
     repository    = "REPLACE_ME-frontend-ext"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-frontend-ext.git"
+    branch        = "dev"
     tag           = "latest"
     port          = 8443
     desired_count = 1
@@ -52,6 +57,8 @@ services = {
     cpu           = 512
     memory        = 1024
     repository    = "REPLACE_ME-frontend-int"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-frontend-int.git"
+    branch        = "dev"
     tag           = "latest"
     port          = 8443
     desired_count = 1
@@ -76,6 +83,8 @@ services = {
     cpu           = 2048 # 2 vCPU
     memory        = 4096
     repository    = "REPLACE_ME-backend"
+    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-backend.git"
+    branch        = "dev"
     tag           = "latest"
     port          = 8002
     desired_count = 1
