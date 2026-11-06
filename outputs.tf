@@ -44,3 +44,8 @@ output "codebuild_projects" {
   description = "CodeBuild 项目名。手工触发：aws codebuild start-build --project-name <名字>。"
   value       = { for k, v in aws_codebuild_project.build : k => v.name }
 }
+
+output "file_bucket" {
+  description = "应用文件桶。Intelligent-Tiering，内置 30 天转 IA、90 天转 Archive Instant Access。"
+  value       = aws_s3_bucket.files.bucket
+}

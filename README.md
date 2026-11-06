@@ -2,7 +2,7 @@
 
 三个服务（`frontend-ext` / `frontend-int` / `backend`）的 Task Definition，区域 `cn-north-1`。
 
-管：ECS 集群、三个服务、Task Definition、日志组、CodeBuild 项目、每服务的 IAM 角色、PRD 的自动扩缩容。
+管：ECS 集群、三个服务、Task Definition、日志组、应用文件桶、CodeBuild 项目、每服务的 IAM 角色、PRD 的自动扩缩容。
 不管：安全组、ALB / 目标组 / 监听器、ECR 仓库、RDS。前三样由 AZ 创建，ID 填进 tfvars。
 
 apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任务在跑。
@@ -40,6 +40,7 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
     iam.tf          执行角色 + 任务角色
     logs.tf         日志组
     codebuild.tf    每服务一个构建项目 + webhook
+    s3.tf           应用文件桶，Intelligent-Tiering
     outputs.tf      按服务名索引
     env/*.tfvars    DEV / PPD / PRD，唯一有环境差异的地方
     docs/           IAM 权限需求、交接清单、镜像要求
@@ -122,6 +123,27 @@ B 还必须带 `--include TAGS`，否则新 revision 丢掉强制 Tag。
   `track_latest = true` 会变成按 family 读最新，于是天天有偏移。
 - **服务设 `ignore_changes = [task_definition, desired_count]`。**
   前者让 CodeBuild 指定的 revision 不被 apply 拽回去，后者让 Auto Scaling 能改任务数。
+
+## 应用文件桶
+
+一个环境一个，名字 `az-cnrdit-<env>-<project>-files`（S3 桶名只收小写）。
+后端读写它，任务角色权限由 `file_bucket_access = true` 自动生成 —— 对象操作限在桶内，
+`ListBucket` 的资源只能是桶本身，这是 S3 的规则。
+
+存储策略按需求配的：
+
+| 项 | 实现 |
+| --- | --- |
+| 存储方式 | 生命周期规则 day 0 转 Intelligent-Tiering，不依赖应用上传时指定存储类 |
+| 未访问降级 | **Intelligent-Tiering 内置 30 天转 Infrequent Access、90 天转 Archive Instant Access，阈值不可配** |
+| Archive / Deep Archive Access | 不启用（没写 intelligent_tiering_configuration），所以取回不需要恢复 |
+| 版本过期删除 | 不启用，保留规则由业务侧处理 |
+| 失败的分片上传 | 7 天后清理。这不是删文件 —— 未完成的分片看不见但一直计费 |
+
+**需求里的 60 天 / 120 天实现不了。** Intelligent-Tiering 的 30/90 是 AWS 写死的，
+能配的只有 Archive Access（90-730 天）和 Deep Archive Access（180-730 天），而这两个按要求不启用。
+用生命周期规则倒是能配 60/120，但那是按**对象创建时间**算，不是"未访问时间"，语义不同，
+会把天天在读的热文件也降级。这条要和提需求的人确认。
 
 ## CodeBuild
 

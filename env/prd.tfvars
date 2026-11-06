@@ -81,6 +81,9 @@ services = {
     memory        = 8192
     repository    = "REPLACE_ME-backend"
     repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-backend.git"
+
+    # 后端读写应用文件桶，任务角色权限自动生成。
+    file_bucket_access = true
     tag           = "REPLACE_ME"
     port          = 8002
     desired_count = 2

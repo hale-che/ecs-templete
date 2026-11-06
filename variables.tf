@@ -48,6 +48,12 @@ variable "log_retention_days" {
   default     = 30
 }
 
+variable "file_bucket_name" {
+  description = "应用文件桶的名字。null 表示按 az-cnrdit-<env>-<project>-files 推导。S3 桶名全局唯一，撞名才需要显式给。"
+  type        = string
+  default     = null
+}
+
 variable "enable_build_webhook" {
   description = <<-EOT
     GitHub push 自动触发构建。生产默认关闭 —— 推一次代码就发一次生产不是好主意。
@@ -84,6 +90,9 @@ variable "services" {
 
     # npm 和 Java 构建吃内存，不够就换 BUILD_GENERAL1_MEDIUM。
     build_compute_type = optional(string, "BUILD_GENERAL1_SMALL")
+
+    # 给任务角色加文件桶的读写权限。按 SBP 只有后端需要。
+    file_bucket_access = optional(bool, false)
 
     # 容器监听的端口，也是 ALB 转发的目标端口。
     port = number

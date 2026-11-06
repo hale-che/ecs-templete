@@ -23,6 +23,9 @@ locals {
 
   log_group = { for k, v in local.name : k => "/ecs/${v}" }
 
+  # S3 桶名只收小写，所以不能直接用 cluster_name。
+  file_bucket_name = coalesce(var.file_bucket_name, lower("${local.cluster_name}-files"))
+
   ecr_arn = {
     for k, s in var.services :
     k => "arn:${local.partition}:ecr:${var.region}:${local.account_id}:repository/${s.repository}"

@@ -113,14 +113,38 @@ resource "aws_iam_role" "task" {
 }
 
 locals {
-  # 没有自定义权限的服务不建空策略，空的 policy document 会被 API 拒绝。
+  # 没有任何权限的服务不建空策略，空的 policy document 会被 API 拒绝。
   services_with_task_policy = {
-    for k, s in var.services : k => s if length(s.task_role_policy_statements) > 0
+    for k, s in var.services : k => s
+    if length(s.task_role_policy_statements) > 0 || s.file_bucket_access
   }
 }
 
 data "aws_iam_policy_document" "task" {
   for_each = local.services_with_task_policy
+
+  # 文件桶：对象操作限到桶内，ListBucket 的资源只能是桶本身，所以不能带 /*。
+  dynamic "statement" {
+    for_each = each.value.file_bucket_access ? [1] : []
+
+    content {
+      sid       = "ReadWriteFileBucketObjects"
+      effect    = "Allow"
+      actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion"]
+      resources = ["${aws_s3_bucket.files.arn}/*"]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.file_bucket_access ? [1] : []
+
+    content {
+      sid       = "ListFileBucket"
+      effect    = "Allow"
+      actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
+      resources = [aws_s3_bucket.files.arn]
+    }
+  }
 
   dynamic "statement" {
     for_each = each.value.task_role_policy_statements
