@@ -40,29 +40,10 @@ variable "mandatory_tags" {
   }
 }
 
-variable "kms_key_id" {
-  description = "加密日志组的 KMS CMK。别名、Key ID、ARN 都行，ARN 由 data 源解析。"
-  type        = string
-}
-
 variable "log_retention_days" {
   description = "日志保留天数。"
   type        = number
   default     = 30
-}
-
-variable "secret_kms_key_arns" {
-  description = <<-EOT
-    加密 Secrets Manager 密钥的 CMK。和 kms_key_id（日志用）不是同一把时必须给，
-    否则执行角色取不到密钥，任务启动报 AccessDenied。用 AWS 托管密钥则不用填。
-  EOT
-  type        = list(string)
-  default     = []
-
-  validation {
-    condition     = alltrue([for a in var.secret_kms_key_arns : can(regex("^arn:aws[a-z-]*:kms:", a))])
-    error_message = "secret_kms_key_arns 必须是 KMS Key 的完整 ARN。"
-  }
 }
 
 variable "subnet_ids" {

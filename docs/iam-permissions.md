@@ -28,7 +28,6 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 | `ecr:BatchCheckLayerAvailability` `ecr:BatchGetImage` `ecr:GetDownloadUrlForLayer` | 该服务自己那一个仓库 | 拉镜像。不用 `repository/*` |
 | `logs:CreateLogStream` `logs:PutLogEvents` | `log-group:/ecs/<服务资源名>:log-stream:*` | awslogs driver 把容器 stdout 写进日志组。日志组由 Terraform 建，**不需要 `CreateLogGroup`** |
 | `secretsmanager:GetSecretValue` | 该服务实际引用的 Secret ARN | 启动时把 RDS 密码等注入容器环境变量。没有 Secret 的服务整条不下发 |
-| `kms:Decrypt` | 日志和 Secret 用的 CMK | 日志组和 Secret 都是 CMK 加密的。条件 `kms:ViaService` 限定 secretsmanager / logs |
 
 信任策略：`ecs-tasks.amazonaws.com`，带 `aws:SourceAccount` 和 `aws:SourceArn`（防混淆代理）。
 
@@ -65,7 +64,7 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
     ]
 
 `ListBucket` 的资源只能是 bucket 本身（不带 `/*`），所以靠 `s3:prefix` 条件收口到项目自己的前缀。
-如果 bucket 用 CMK 加密，还要对那个 key 加 `kms:Decrypt` 和 `kms:GenerateDataKey`。
+如果那个 bucket 用自管 CMK 加密，还要对那把 key 加 `kms:Decrypt` 和 `kms:GenerateDataKey`。
 
 **发邮件 —— 大概率不需要 IAM 权限。**
 
@@ -139,8 +138,7 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 | `application-autoscaling:RegisterScalableTarget` `DeregisterScalableTarget` `DescribeScalableTargets` `PutScalingPolicy` `DeleteScalingPolicy` `DescribeScalingPolicies` | **`*` 必须** | PRD 的 2-4 扩缩容 |
 | `iam:CreateServiceLinkedRole` | 条件 `iam:AWSServiceName` 限定 `ecs.amazonaws.com` 和 `ecs.application-autoscaling.amazonaws.com` | ECS 和自动扩缩容的服务关联角色，账号里已有就不会调 |
 | `elasticloadbalancing:DescribeTargetGroups` `DescribeLoadBalancers` | 目标组 / ALB ARN | 服务关联目标组时可能需要，不确定则先给 |
-| `logs:CreateLogGroup` `logs:DeleteLogGroup` `logs:DescribeLogGroups` `logs:PutRetentionPolicy` `logs:AssociateKmsKey` `logs:TagResource` `logs:ListTagsForResource` | `log-group:/ecs/*` | 建带 CMK 加密的日志组 |
-| `kms:DescribeKey` | CMK ARN | 把别名解析成 ARN |
+| `logs:CreateLogGroup` `logs:DeleteLogGroup` `logs:DescribeLogGroups` `logs:PutRetentionPolicy` `logs:TagResource` `logs:ListTagsForResource` | `log-group:/ecs/*` | 建日志组 |
 | `sts:GetCallerIdentity` | `*` | 取账号 ID 拼 ARN，无资源概念 |
 | `s3:ListBucket` | state bucket | **不能漏。** 缺了 S3 对不存在的 key 返回 403 而不是 404，`terraform init` 报的错指向完全不相干的地方 |
 | `s3:GetObject` `s3:PutObject` `s3:DeleteObject` | state key | 读写 state |
@@ -152,8 +150,7 @@ ECS 代理用，不是业务代码用。资源范围按**该服务自己的**仓
 
 1. **IAM 命名 / path 约束** —— 是否要求建在某个 path 下，和 `AZ-CNRDIT-` 前缀是否冲突。
 2. **Permissions Boundary** —— 是否强制，强制的话 ARN 是多少。
-3. **日志 CMK 的 key policy** —— 要允许 `logs.<region>.amazonaws.com`，否则建加密日志组直接 AccessDenied。
-4. **RDS 密码所在 Secret 的 CMK key policy** —— 要显式允许本项目的执行角色 `kms:Decrypt`。AZ 建 RDS、我们读密码，这个跨团队依赖最容易漏到联调才发现。
-5. **ECR 仓库的 tag 可变性** —— `MUTABLE` 还是 `IMMUTABLE`。决定第 3 节发布方案能不能选 A。
+3. **Secrets 一律用 AWS 托管密钥**（`aws/secretsmanager`）。换成自管 CMK 的话，要在 `iam.tf` 给执行角色补 `kms:Decrypt`，并在 Key Policy 里允许它。
+4. **ECR 仓库的 tag 可变性** —— `MUTABLE` 还是 `IMMUTABLE`。决定第 3 节发布方案能不能选 A。
 
 对应的 Terraform 实现在 `iam.tf`，可以直接 diff。
