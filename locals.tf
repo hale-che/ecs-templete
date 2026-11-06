@@ -46,10 +46,22 @@ locals {
     k => "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:${v}:log-stream:*"
   }
 
+  # TLS 证书的 ARN 由 Terraform 产生，没法写进 tfvars，所以在这里合进每个服务。
+  # tfvars 的 secrets 只放 AZ 给的（RDS 密码之类），同名时以 tfvars 为准。
+  secrets_effective = {
+    for k, s in var.services : k => merge(
+      {
+        TLS_CERT = "${aws_secretsmanager_secret.tls.arn}:cert::"
+        TLS_KEY  = "${aws_secretsmanager_secret.tls.arn}:key::"
+      },
+      s.secrets,
+    )
+  }
+
   # IAM 要密钥本体的 ARN。ECS 的 valueFrom 可以带 :json-key:: 后缀，截掉前 7 段还原。
   secret_arns = {
-    for k, s in var.services :
-    k => distinct([for a in values(s.secrets) : join(":", slice(split(":", a), 0, 7))])
+    for k, v in local.secrets_effective :
+    k => distinct([for a in values(v) : join(":", slice(split(":", a), 0, 7))])
   }
 
   container_base = {
@@ -70,7 +82,7 @@ locals {
       }]
 
       environment = [for ek, ev in s.environment : { name = ek, value = ev }]
-      secrets     = [for sk, sv in s.secrets : { name = sk, valueFrom = sv }]
+      secrets     = [for sk, sv in local.secrets_effective[k] : { name = sk, valueFrom = sv }]
 
       logConfiguration = {
         logDriver = "awslogs"

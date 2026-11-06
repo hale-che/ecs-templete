@@ -49,3 +49,8 @@ output "file_bucket" {
   description = "应用文件桶。Intelligent-Tiering，内置 30 天转 IA、90 天转 Archive Instant Access。"
   value       = aws_s3_bucket.files.bucket
 }
+
+output "tls_secret_arn" {
+  description = "TLS 证书的 Secret。Terraform 只建容器，值要手工填，见 README。"
+  value       = aws_secretsmanager_secret.tls.arn
+}

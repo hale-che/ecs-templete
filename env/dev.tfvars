@@ -45,12 +45,6 @@ services = {
       BACKEND_URL = "https://backend-service:8002"
     }
 
-    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
-    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
-    secrets = {
-      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
-      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
-    }
   }
 
   "frontend-int" = {
@@ -71,12 +65,6 @@ services = {
       BACKEND_URL = "https://backend-service:8002"
     }
 
-    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
-    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
-    secrets = {
-      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
-      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
-    }
   }
 
   "backend" = {
@@ -105,11 +93,8 @@ services = {
     }
 
     # 环境变量名 -> Secrets Manager ARN。执行角色权限自动按这里的 ARN 收口。
-    # 证书走 Secrets Manager 注入成环境变量，entrypoint 写成文件。
-    # 一个 Secret 两个字段（cert / key），ARN 末尾的 :字段名:: 是 ECS 取 JSON 字段的语法。
-    secrets = {
-      TLS_CERT = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:cert::"
-      TLS_KEY  = "arn:aws-cn:secretsmanager:cn-north-1:REPLACE_ME:secret:REPLACE_ME-AbCdEf:key::"
-    }
+    # TLS 证书由 Terraform 自动注入，不用在这里写。
+    # 这里只放 AZ 给的密钥，比如 RDS 密码：
+    #   secrets = { DB_PASSWORD = "arn:aws-cn:secretsmanager:...:secret:xxx-AbCdEf:password::" }
   }
 }
