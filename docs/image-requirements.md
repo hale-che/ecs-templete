@@ -33,7 +33,9 @@ awsvpc 网络模式下 ALB 访问任务 ENI 的 IP。只绑 `127.0.0.1` 的进�
 | 浏览器到不了后端 | 后端不挂任何 ALB，只在私有子网里被前端直连 |
 | 打进去就得一个环境一个镜像 | 和 DEV/PPD 共用 `latest` 的 tag 约定冲突 |
 
-后端地址是内部 ALB 的 DNS 名，分环境，从 `environment` 的 `BACKEND_URL` 进来。
+后端地址从 `environment` 的 `BACKEND_URL` 读取。当前三个环境的两个前端均为
+`https://backend-service:8002`，通过 ECS Service Connect 访问后端，不经内部 ALB。
+Terraform 会拒绝前端缺失该地址、使用 HTTP，或在地址中加入路径 / 末尾斜杠的配置。
 
 nginx 不会自己读环境变量，镜像要在 entrypoint 里做一次替换，例如：
 
@@ -42,20 +44,23 @@ nginx 不会自己读环境变量，镜像要在 entrypoint 里做一次替换�
 
 变量名要和 `env/*.tfvars` 里 `environment` 的 key 一致，现在写的是 `BACKEND_URL`，按镜像实际用的改。
 
-**用 `resolver` + 变量形式的 `proxy_pass`。** nginx 默认只在启动时解析一次上游 DNS 然后永久缓存，
-而后端任务的 IP 会随发布和扩缩容变 —— 缓存住就打到死地址，表现是间歇性 502，很难查。
-
-    resolver 169.254.169.253 valid=10s;   # VPC 内置 DNS
+**在启动时用 envsubst 把地址写入静态 `proxy_pass`，保留 `/api` 请求路径：**
 
     location /api/ {
-      set $upstream "${BACKEND_URL}";     # 变量形式才会重新解析
-      proxy_pass $upstream;
+      proxy_pass ${BACKEND_URL};          # envsubst 后是 https://backend-service:8002
       proxy_ssl_server_name on;           # 后端是 HTTPS，SNI 要带上
       proxy_ssl_verify off;               # 不校验后端证书（这也是默认值，写出来明确意图）
     }
 
-后端走 ECS Service Connect，Envoy 会接管端点变化，所以 `resolver` 不是必需的 ——
-但留着无害，而且万一以后换服务发现方式不用改。
+`backend-service` 是 Service Connect 注入前端任务的端点名，可在容器的 `/etc/hosts` 中查看，
+不是 VPC DNS 中的 ALB 域名。上述静态地址由系统在 Nginx 启动时解析到本任务的代理端点，
+后端任务 IP 的变化由 Service Connect 代理处理。
+不要改成 Nginx 运行期 `$upstream` 变量加 VPC `resolver`：该解析会绕过系统 hosts，可能找不到端点。
+首次部署须先创建后端端点，再启动前端任务；已有前端任务需要重新部署才能获得新增端点。
+
+`service_connect_configuration.enabled = true` 仅开启服务通信代理，不能替代镜像的 TLS 配置。
+本模板保持 `appProtocol` 未设置，代理按 TCP 转发应用自己的 TLS 流量；
+未启用基于 AWS Private CA 的 Service Connect 原生 TLS。
 
 ## 5. TLS 证书从环境变量写成文件
 
@@ -121,7 +126,20 @@ CA 给的是 PKCS#1（`-----BEGIN RSA PRIVATE KEY-----`）或者带密码的话�
 这条要在**签发证书时就跟 CA 说清楚**，不然拿到手才发现格式不对，又得走一轮。
 
 **前端的证书可以自签**：ALB 到目标的 HTTPS 连接**不校验目标证书**，这是 ALB 的既定行为。
-真正需要被信任的是后端那张 —— 前端 nginx 会校验它，所以它的 **SAN 必须包含前端实际访问的主机名**。
+当前前端 Nginx 示例设置 `proxy_ssl_verify off`，前端到后端仍使用 HTTPS 加密，允许自签证书，
+但不验证后端身份。若改为 `proxy_ssl_verify on`，须同时配置 `proxy_ssl_trusted_certificate`，
+并让后端证书的 SAN 包含 `backend-service`（或实际访问的主机名）。
+
+### 部署后的 HTTPS 验收
+
+部署后，通过现有的任务内调试方式，从两个前端容器分别执行：
+
+    curl --fail --show-error --verbose --insecure https://backend-service:8002/health
+
+确认 TLS 握手完成、返回后端健康响应，再通过前端实际 `/api` 路径验证反向代理。
+`--insecure` 对应当前自签证书策略；它仍使用 TLS，不代表证书信任校验通过。
+最后检查后端没有额外开放 HTTP connector，不能仅凭 HTTPS 健康检查认定所有调用均已加密。
+Terraform 只注入证书变量，不会替镜像生成这些文件或开启 Spring Boot / Nginx 的 TLS。
 
 ## 6. 启动命令固化在 Dockerfile
 
@@ -158,3 +176,7 @@ CA 给的是 PKCS#1（`-----BEGIN RSA PRIVATE KEY-----`）或者带密码的话�
 - **健康检查端点**：三个服务都要提供 **HTTPS** 的 `/health`。前端由 ALB 目标组检查；**后端不挂 ALB，靠容器健康检查，所以后端镜像里必须有 `curl`** —— 命令是 `curl -fsSk https://localhost:8002/health`，`-k` 是跳过自签证书校验。没有 curl 会变成无限 crashloop。
 - **基础镜像来源待确认**：cn-north-1 直连 Docker Hub 不稳，内部是否有 artifact 镜像源要问 AZ。
 - **镜像不要太大**：Fargate 临时盘 20 GiB（模板没开 `ephemeral_storage`），大镜像还会拖慢扩容时的拉取。
+
+参考：[Service Connect 配置](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-connect-concepts.html)、
+[AWS 端点解析排查](https://repost.aws/knowledge-center/ecs-troubleshoot-service-connect)、
+[Nginx HTTPS 上游配置](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass)。

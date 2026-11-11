@@ -16,15 +16,110 @@ resource "aws_s3_bucket_public_access_block" "files" {
   restrict_public_buckets = true
 }
 
-# 不用自管 CMK，和日志保持一致。S3 现在默认就是 SSE-S3，这里写出来是为了审计能看到。
+# Sonar S6258：访问日志写入 AZ 集中日志桶，不给业务桶添加旧式 log-delivery-write ACL。
+# 目标桶及其投递策略由 AZ 管理，配置要求见 docs/s3-access-logging.md。
+resource "aws_s3_bucket_logging" "files" {
+  bucket        = aws_s3_bucket.files.id
+  target_bucket = var.s3_access_log_bucket_name
+  target_prefix = local.s3_access_log_prefix
+
+  lifecycle {
+    precondition {
+      condition     = var.s3_access_log_bucket_name != local.file_bucket_name
+      error_message = "访问日志必须写入独立日志桶，不能投递回应用桶自身。"
+    }
+  }
+}
+
+# SSE-KMS 使用本项目创建的 CMK，不能退回 SSE-S3 或 aws/s3。
 resource "aws_s3_bucket_server_side_encryption_configuration" "files" {
   bucket = aws_s3_bucket.files.id
 
   rule {
+    bucket_key_enabled = true
+
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.files.arn
     }
   }
+}
+
+# 无加密请求头时使用上面的桶默认值；显式指定时必须使用同一把 CMK。
+# 尤其 aws:kms 请求头未带 key ID 时，S3 会选 aws/s3，必须阻止这种绕过。
+data "aws_iam_policy_document" "file_bucket" {
+  statement {
+    sid       = "DenyOtherServerSideEncryption"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.files.arn}/*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["false"]
+    }
+
+    condition {
+      test     = "StringNotEquals"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["aws:kms"]
+    }
+  }
+
+  statement {
+    sid       = "DenyExplicitKmsWithoutApprovedKey"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.files.arn}/*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["aws:kms"]
+    }
+
+    condition {
+      test     = "StringNotEquals"
+      variable = "s3:x-amz-server-side-encryption-aws-kms-key-id"
+      values   = [aws_kms_key.files.arn]
+    }
+  }
+
+  statement {
+    sid       = "DenyCustomerProvidedEncryptionKeys"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.files.arn}/*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-server-side-encryption-customer-algorithm"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "files" {
+  bucket = aws_s3_bucket.files.id
+  policy = data.aws_iam_policy_document.file_bucket.json
+
+  depends_on = [aws_s3_bucket_server_side_encryption_configuration.files]
 }
 
 # 开版本控制。按要求不配历史版本的过期删除，保留规则由业务侧处理。

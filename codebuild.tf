@@ -5,24 +5,24 @@ resource "aws_cloudwatch_log_group" "build" {
   for_each = var.services
 
   # 自己建而不是让 CodeBuild 建：它建出来的日志组永不过期。
-  name              = "/aws/codebuild/${local.name[each.key]}"
+  name              = "/aws/codebuild/${local.build_name[each.key]}"
   retention_in_days = var.log_retention_days
 
-  tags = { Name = "/aws/codebuild/${local.name[each.key]}" }
+  tags = { Name = "/aws/codebuild/${local.build_name[each.key]}" }
 }
 
 resource "aws_codebuild_project" "build" {
   for_each = var.services
 
-  name         = "${local.name[each.key]}-build"
+  name         = local.build_name[each.key]
   description  = "Build and deploy ${local.name[each.key]}. Managed by Terraform."
   service_role = aws_iam_role.codebuild[each.key].arn
 
   source {
-    type            = "GITHUB"
-    location        = each.value.repo_url
-    buildspec       = "buildspec.yml"
-    git_clone_depth = 1
+    type                = "GITHUB"
+    location            = each.value.repo_url
+    buildspec           = "buildspec.yml"
+    git_clone_depth     = 1
     report_build_status = true
   }
 
@@ -73,7 +73,7 @@ resource "aws_codebuild_project" "build" {
     }
   }
 
-  tags = { Name = "${local.name[each.key]}-build" }
+  tags = { Name = local.build_name[each.key] }
 }
 
 # push 自动触发。生产默认关闭。

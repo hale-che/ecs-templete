@@ -4,24 +4,23 @@ variable "region" {
 }
 
 variable "project" {
-  description = "项目标识，命名规范 AZ-CNRDIT-<ENV>-<project>-<服务名> 的第三段。"
+  description = "项目标识，资源命名为 az-cn-rdit-<project>-<用途>-<environment>。"
   type        = string
 
-  # 18 是算出来的：AZ-CNRDIT-PPD- (14) + project + -frontend-ext (13)
-  # + -ecs-execution-role (19) 不能超过 IAM 角色名的 64 字符上限。
+  # 默认 frontend-ext 执行角色在 project 为 17 位时恰好 64 字符；自定义服务名还会单独校验。
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,17}$", var.project))
-    error_message = "project 只能用小写字母、数字和连字符，2-18 位。再长会把 IAM 角色名顶过 64 字符。"
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,16}$", var.project))
+    error_message = "project 只能用小写字母、数字和连字符，2-17 位；IAM 角色名不能超过 64 字符。"
   }
 }
 
 variable "environment" {
-  description = "环境标识，取 DEV / PPD / PRD。"
+  description = "环境标识，统一使用小写 dev / ppd / prd。"
   type        = string
 
   validation {
-    condition     = contains(["DEV", "PPD", "PRD"], var.environment)
-    error_message = "environment 必须是 DEV、PPD 或 PRD。"
+    condition     = contains(["dev", "ppd", "prd"], var.environment)
+    error_message = "environment 必须是小写 dev、ppd 或 prd。"
   }
 }
 
@@ -49,9 +48,32 @@ variable "log_retention_days" {
 }
 
 variable "file_bucket_name" {
-  description = "应用文件桶的名字。null 表示按 az-cnrdit-<env>-<project>-files 推导。S3 桶名全局唯一，撞名才需要显式给。"
+  description = "应用文件桶名字，默认 az-cn-rdit-<project>-files-<environment>。S3 桶名全局唯一，撞名才显式指定。"
   type        = string
   default     = null
+}
+
+variable "s3_access_log_bucket_name" {
+  description = "AZ 提供的集中 S3 访问日志桶，须与应用桶同账号同区域并允许日志服务写入指定前缀。"
+  type        = string
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.s3_access_log_bucket_name))
+    error_message = "s3_access_log_bucket_name 必须填写实际小写 S3 桶名，不能使用 ARN 或通配符。"
+  }
+}
+
+variable "kms_administrator_arns" {
+  description = "AZ 密钥管理员及执行 Terraform 的 IAM 角色 ARN；每环境必填，包含实际部署角色以通过 KMS 防锁定校验。"
+  type        = list(string)
+
+  validation {
+    condition = length(var.kms_administrator_arns) > 0 && alltrue([
+      for arn in var.kms_administrator_arns : can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", arn))
+    ])
+    error_message = "kms_administrator_arns 至少提供一个完整 IAM role ARN，不能填 STS 会话 ARN 或通配符。"
+  }
 }
 
 variable "enable_build_webhook" {
@@ -97,20 +119,22 @@ variable "services" {
     # 容器监听的端口，也是 ALB 转发的目标端口。
     port = number
 
-    # AZ 创建后给的，一服务一个。
+    # AZ 创建后提供；当前三个环境的三个服务共用同一个 SG，规则由 AZ 管理。
     security_group_ids = list(string)
 
     # ALB 目标组。只有接用户流量的服务需要，健康检查配在目标组上。
     # 不挂 ALB 的服务留 null，改用 health_check_command。
     target_group_arn = optional(string)
 
-    # 注册进 Service Connect，供其他服务用 https://<这个名字>:<port> 访问。
-    # null 表示只作为客户端：能调别人，别人调不到它。
     service_connect_name = optional(string)
 
     environment = optional(map(string), {})
     # 环境变量名 -> Secrets Manager ARN。密文不进 Terraform，执行角色权限按这里的 ARN 收口。
     secrets = optional(map(string), {})
+
+    # 上述 AZ 提供的 Secret 若使用 CMK，列出对应 key ARN，执行角色自动补 kms:Decrypt。
+    # TLS Secret 使用本项目创建的 CMK，不用在这里重复填。
+    secrets_kms_key_arns = optional(list(string), [])
 
     # nginx 这类要写 /var/cache、/var/run 的镜像必须是 false。
     # 证书也要靠 entrypoint 落盘，所以这里不能设 true。
@@ -136,10 +160,18 @@ variable "services" {
     # 任务数。null 当 1 用。
     desired_count = optional(number)
 
-    # 两个都给才建 Auto Scaling；留空表示固定任务数，不扩缩容。
-    min_capacity = optional(number)
-    max_capacity = optional(number)
   }))
+
+  validation {
+    condition = alltrue([
+      for name, service in var.services :
+      contains(["frontend-ext", "frontend-int"], name) ? can(regex(
+        "^https://[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?$",
+        lookup(service.environment, "BACKEND_URL", "")
+      )) : true
+    ])
+    error_message = "前端 BACKEND_URL 必须使用 HTTPS 的服务地址（例如 https://backend-service:8002），且不能带路径或末尾斜杠。"
+  }
 
   # 服务名同时是容器名，容器名只收这个字符集。
   validation {
@@ -155,6 +187,15 @@ variable "services" {
       ]
     ]))
     error_message = "secrets 的值必须是 Secrets Manager 的完整 ARN。用 SSM Parameter Store 要先改 iam.tf。"
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for s in values(var.services) : [
+        for a in s.secrets_kms_key_arns : can(regex("^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$", a))
+      ]
+    ]))
+    error_message = "secrets_kms_key_arns 只能包含完整的 KMS key ARN，不能使用 alias、key ID 或通配符。"
   }
 
   validation {
