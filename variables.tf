@@ -53,6 +53,12 @@ variable "file_bucket_name" {
   default     = null
 }
 
+variable "codebase_bucket_name" {
+  description = "代码桶名字，默认 az-cn-rdit-<project>-s3-codebase-<environment>。S3 桶名全局唯一，撞名才显式指定。"
+  type        = string
+  default     = null
+}
+
 variable "s3_access_log_bucket_name" {
   description = "AZ 提供的集中 S3 访问日志桶，须与应用桶同账号同区域并允许日志服务写入指定前缀。"
   type        = string

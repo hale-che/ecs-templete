@@ -149,8 +149,8 @@ KMS 资源只包含本项目创建的文件桶 CMK，条件限制为本区域 S3
 | `logs:CreateLogGroup` `logs:DeleteLogGroup` `logs:DescribeLogGroups` `logs:PutRetentionPolicy` `logs:TagResource` `logs:ListTagsForResource` | `log-group:/ecs/*` | 建日志组 |
 | `sts:GetCallerIdentity` | `*` | 取账号 ID 拼 ARN，无资源概念 |
 | `kms:CreateKey`、key / alias 的读取、策略、标签、轮换和生命周期操作 | 创建时 `*` 配合 Project / Environment 请求标签；后续限定本环境 CMK / alias | 本模板现在创建两把 CMK；实际部署角色必须列入 `kms_administrator_arns`，见 `kms.md` |
-| `s3:PutEncryptionConfiguration` `s3:GetEncryptionConfiguration` `s3:PutBucketPolicy` `s3:GetBucketPolicy` `s3:DeleteBucketPolicy` | 应用文件桶 ARN | 管理 SSE-KMS 默认加密及禁止加密降级的桶策略；此外仍需原有建桶、版本控制和生命周期权限 |
-| `s3:GetBucketLogging` `s3:PutBucketLogging` | 应用文件桶 ARN | 配置向 AZ 集中日志桶投递访问日志，不管理共享目标桶 policy |
+| `s3:PutEncryptionConfiguration` `s3:GetEncryptionConfiguration` `s3:PutBucketPolicy` `s3:GetBucketPolicy` `s3:DeleteBucketPolicy` | 应用文件桶 + 代码桶 ARN | 管理 SSE-KMS 默认加密及禁止加密降级的桶策略；此外仍需原有建桶、版本控制和生命周期权限 |
+| `s3:GetBucketLogging` `s3:PutBucketLogging` | 应用文件桶 + 代码桶 ARN | 配置向 AZ 集中日志桶投递访问日志，不管理共享目标桶 policy |
 | `kms:DescribeKey` `kms:GenerateDataKey` `kms:Decrypt`（TLS Secret） | 本项目 TLS Secret CMK | Secrets Manager 创建或更新加密配置时需要；手工填值的身份同样需要对应权限 |
 | `s3:ListBucket` | state bucket | **不能漏。** 缺了 S3 对不存在的 key 返回 403 而不是 404，`terraform init` 报的错指向完全不相干的地方 |
 | `s3:GetObject` `s3:PutObject` `s3:DeleteObject` | state key | 读写 state |
