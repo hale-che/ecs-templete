@@ -1,21 +1,20 @@
 region      = "cn-north-1"
-project     = "REPLACE_ME"
+project     = "aiec"
 environment = "dev"
 
-# AZ 下发的强制 Tag 清单，键名以清单为准。
+# AZ 强制标签。project 用于资源命名，applicationname 是应用展示名称。
 mandatory_tags = {
-  AccountOwner = "REPLACE_ME"
-  Maintainer   = "REPLACE_ME"
-  CMDB         = "REPLACE_ME"
-  RequestID    = "REPLACE_ME"
-  CostCenter   = "REPLACE_ME"
+  applicationname  = "AIEC Platform"
+  applicationowner = "yongguo.he@astrazeneca.com"
+  "Cost Center"    = "4109900005"
+  "IDMD No"        = "CSE-13326"
+  applicationid    = "SNSVC0008172"
+  environment      = "Dev"
+  creationdate     = "11/11/2026" # 部署前按 AZ 要求填写实际创建日期。
 }
 
 # DEV 推 dev 分支自动构建部署。
 enable_build_webhook = true
-
-# AZ 集中访问日志桶（同账号、同区域），需预先配置投递权限。
-s3_access_log_bucket_name = "REPLACE_ME-access-logs"
 
 log_retention_days = 30
 
@@ -32,12 +31,15 @@ subnet_ids = [
 
 # key 是服务名，也是容器名，还会拼进资源名：az-cn-rdit-<project>-<服务名>-dev。
 # security_group_ids 和 target_group_arn 都是 AZ 创建后给的。
+# 三个服务使用同一 Git 仓库，buildspec 路径相对于仓库根目录。
+# repository 是各自的 ECR 镜像仓库名，不是 Git 仓库或源码目录。
 services = {
   "frontend-ext" = {
     cpu           = 512 # 0.5 vCPU
     memory        = 1024
     repository    = "REPLACE_ME-frontend-ext"
-    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-frontend-ext.git"
+    repo_url      = "https://github.com/AZU-RDIT/AIEC.git"
+    buildspec     = "frontend-ext/buildspec.yml" # 外网前端
     branch        = "dev"
     tag           = "latest"
     port          = 8443
@@ -57,7 +59,8 @@ services = {
     cpu           = 512
     memory        = 1024
     repository    = "REPLACE_ME-frontend-int"
-    repo_url      = "https://github.com/REPLACE_ME/REPLACE_ME-frontend-int.git"
+    repo_url      = "https://github.com/AZU-RDIT/AIEC.git"
+    buildspec     = "frontend-int/buildspec.yml" # 内网前端
     branch        = "dev"
     tag           = "latest"
     port          = 8443
@@ -77,7 +80,8 @@ services = {
     cpu        = 2048 # 2 vCPU
     memory     = 4096
     repository = "REPLACE_ME-backend"
-    repo_url   = "https://github.com/REPLACE_ME/REPLACE_ME-backend.git"
+    repo_url   = "https://github.com/AZU-RDIT/AIEC.git"
+    buildspec  = "backend/buildspec.yml" # 后端
 
     # 后端读写应用文件桶，任务角色权限自动生成。
     file_bucket_access = true

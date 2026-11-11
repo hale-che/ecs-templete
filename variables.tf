@@ -25,19 +25,22 @@ variable "environment" {
 }
 
 variable "mandatory_tags" {
-  description = "AZ 强制 Tag。键名以 AZ 下发的清单为准。"
-  type = object({
-    AccountOwner = string # 账号所有者
-    Maintainer   = string # 维护人
-    CMDB         = string # CMDB 信息
-    RequestID    = string # 申请单号
-    CostCenter   = string # 成本中心
-  })
+  description = "AZ 强制 Tag，实际值填写在各环境 tfvars 的 mandatory_tags 中。"
+  # 含空格的 AZ 标签键使用 map，并单独校验七个键名。
+  type = map(string)
+
+  validation {
+    condition = toset(keys(var.mandatory_tags)) == toset([
+      "applicationname", "applicationowner", "Cost Center", "IDMD No",
+      "applicationid", "environment", "creationdate",
+    ])
+    error_message = "mandatory_tags 必须包含 AZ 要求的七个标签，键名及大小写须与清单一致。"
+  }
 
   # 空字符串能过 type 检查，但在控制台上和没打 Tag 一样。
   validation {
     condition     = alltrue([for v in values(var.mandatory_tags) : trimspace(v) != ""])
-    error_message = "强制 Tag 不允许留空，五个字段都要填。"
+    error_message = "强制 Tag 不允许留空，七个字段都要填。"
   }
 }
 
@@ -57,17 +60,6 @@ variable "codebase_bucket_name" {
   description = "代码桶名字，默认 az-cn-rdit-<project>-s3-codebase-<environment>。S3 桶名全局唯一，撞名才显式指定。"
   type        = string
   default     = null
-}
-
-variable "s3_access_log_bucket_name" {
-  description = "AZ 提供的集中 S3 访问日志桶，须与应用桶同账号同区域并允许日志服务写入指定前缀。"
-  type        = string
-  nullable    = false
-
-  validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.s3_access_log_bucket_name))
-    error_message = "s3_access_log_bucket_name 必须填写实际小写 S3 桶名，不能使用 ARN 或通配符。"
-  }
 }
 
 variable "kms_administrator_arns" {
@@ -112,9 +104,11 @@ variable "services" {
     repository = string
     tag        = string
 
-    # GitHub 仓库地址，CodeBuild 的源。两个服务同仓库的话填一样的。
+    # GitHub 仓库地址，CodeBuild 的源。同仓库的服务填相同 URL。
     repo_url = string
     branch   = optional(string, "main")
+    # 构建文件相对于仓库根目录的路径，用于同仓库的不同服务目录。
+    buildspec = optional(string, "buildspec.yml")
 
     # npm 和 Java 构建吃内存，不够就换 BUILD_GENERAL1_MEDIUM。
     build_compute_type = optional(string, "BUILD_GENERAL1_SMALL")

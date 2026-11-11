@@ -14,7 +14,7 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | 位置 | 填什么 |
 | --- | --- |
 | `project` | 项目标识，小写，2–17 字符 |
-| `mandatory_tags` | AZ 下发的五个字段 |
+| `mandatory_tags` | AZ 要求的七个标签；已填所提供的值，创建日期需填写实际值 |
 | `repository` ×3 | 三个 ECR 仓库名 |
 | `tag` ×3 | 只有 PRD 要填，DEV/PPD 是 `latest` |
 | `subnet_ids` | AZ 给的私有子网，≥2 个 |
@@ -22,7 +22,6 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | `target_group_arn` ×2 | AZ 给的目标组，只有两个前端 |
 | `repo_url` ×3 | GitHub 仓库地址 |
 | `kms_administrator_arns` | AZ 密钥管理员及实际执行 Terraform 的 IAM 角色 ARN，每环境单独填写 |
-| `s3_access_log_bucket_name` | AZ 的同账号同区域访问日志目标桶，投递权限要求见 `docs/s3-access-logging.md` |
 
 S3 和 TLS Secret 分别使用本项目创建的 CMK，自动开启轮换。外部 RDS Secret 如使用 CMK，接入方式见 `docs/kms.md`。任务数固定：DEV/PPD 每服务 1 个，PRD 每服务 2 个。
 
@@ -74,12 +73,16 @@ CPU 单位 / 内存 MiB。三个环境均不创建 Auto Scaling：DEV/PPD 每服
 | 命名规范 | `az-cn-rdit-<project>-<资源用途>-<dev|ppd|prd>` |
 | 最小权限 IAM | 每服务一对角色，ARN 按该服务自己的仓库和密钥收口 |
 | IAM 条件限制 | CodeBuild 信任精确限定项目 ARN；支持的操作增加项目标签/集群条件；ECS 信任限制见整改记录 |
-| 强制 Tag | 五个字段必填且不许留空，走 `default_tags` |
+| 强制 Tag | 七个字段必填且不许留空，走 `default_tags` |
 | 密码不硬编码 | 只传 Secret ARN，密文不进 state |
 | S3 加密 | SSE-KMS，使用本模板创建的项目 CMK；桶策略禁止显式改用其他加密方式或密钥 |
 | Secrets 加密 | TLS Secret 使用本项目 CMK；外部 Secret 按实际 CMK 配置执行角色权限 |
 
-`mandatory_tags` 的键名是我按理解写的，**拿到 AZ 清单后要核对改名**。IAM 权限清单见 `docs/iam-permissions.md`。
+`mandatory_tags` 使用 AZ 提供的七个键名：`applicationname`、`applicationowner`、`Cost Center`、`IDMD No`、`applicationid`、`environment`、`creationdate`。
+实际值填写在各环境的 `env/*.tfvars`；`applicationid` 只填 `SNSVC0008172`，不包含链接格式。
+`creationdate` 当前为占位值，部署前填写实际日期；环境标签当前分别为 `Dev`、`PPD`、`Prod`，以 AZ 最终要求为准。
+内部 `Project`、`Environment`、`ManagedBy` 标签继续保留，其中前两项用于 IAM/KMS 授权条件。
+IAM 权限清单见 `docs/iam-permissions.md`。
 
 ## 发布流程
 
@@ -186,7 +189,7 @@ SSE-S3、SSE-C、其他密钥，以及只指定 `aws:kms` 而不指定 key ARN �
 
 桶由 Terraform 创建，不走服务申请单。三个环境各 apply 一次，一次一个桶。
 
-安全基线和文件桶一致：阻断公网访问、SSE-KMS + Bucket Key、禁止加密降级的桶策略、访问日志投递到 AZ 集中日志桶。
+安全基线和文件桶一致：阻断公网访问、SSE-KMS + Bucket Key、禁止加密降级的桶策略。当前没有 S3 日志目标桶，两个桶均不配置 S3 访问日志。
 **复用文件桶那把 S3 CMK（`aws_kms_key.files`），没有单独建密钥。**要独立密钥得在 `kms.tf` 再加一把。
 
 版本控制开启，分片上传 7 天清理。历史版本不配过期删除，要控成本再加 `noncurrent_version_expiration`。
@@ -231,6 +234,32 @@ AZ 仍需为外部密钥配置相应 Key Policy。
 
 一个服务一个项目，`for_each` 出来。**buildspec 放应用仓库**，Terraform 只注入它要的值：
 
+同一个 Git 仓库可以构建多个服务：各服务填写相同的 `repo_url`，并用 `buildspec` 指定
+相对于仓库根目录的构建文件路径。不填 `buildspec` 时默认使用根目录的 `buildspec.yml`。
+DEV 已配置为同一个 `https://github.com/AZU-RDIT/AIEC.git` 仓库，分别读取：
+
+| 服务 | 构建文件 |
+| --- | --- |
+| 外网前端 `frontend-ext` | `frontend-ext/buildspec.yml` |
+| 内网前端 `frontend-int` | `frontend-int/buildspec.yml` |
+| 后端 `backend` | `backend/buildspec.yml` |
+
+以上目录及文件需要在应用仓库的 `dev` 分支中存在；若实际目录不同，修改 `env/dev.tfvars` 的对应路径。
+`buildspec` 文件放在子目录不会自动切换构建工作目录，构建命令须明确指定目录或先 `cd`。
+例如后端的 Dockerfile 不依赖仓库根目录文件时，可使用：
+
+```yaml
+version: 0.2
+phases:
+  build:
+    commands:
+      - docker build -f backend/Dockerfile -t "$ECR_REPO:$IMAGE_TAG" backend
+```
+
+这只展示构建步骤，应用仓库的完整 buildspec 还须包含 ECR 登录、推送及部署步骤。
+如需读取根目录的共享文件，按实际 Dockerfile 调整构建上下文。
+`repository` 仍填写各服务自己的 ECR 镜像仓库名，与 Git 仓库及源码目录分别配置。
+
 | 环境变量 | 内容 |
 | --- | --- |
 | `ECR_REPO` | 完整镜像地址，不含 tag |
@@ -246,6 +275,7 @@ AZ 仍需为外部密钥配置相应 Key Policy。
 没有这一步，构建拉不到代码，webhook 也建不出来。
 
 **触发**：`enable_build_webhook` 只在 DEV 开（推 `dev` 分支自动构建部署）。
+当前 webhook 按分支过滤，单仓库向 `dev` 推送一次会触发三个服务构建，未按目录过滤。
 PPD / PRD 关闭，手工或外部流水线触发：
 
     aws codebuild start-build --project-name <terraform output codebuild_projects>

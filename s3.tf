@@ -16,21 +16,6 @@ resource "aws_s3_bucket_public_access_block" "files" {
   restrict_public_buckets = true
 }
 
-# Sonar S6258：访问日志写入 AZ 集中日志桶，不给业务桶添加旧式 log-delivery-write ACL。
-# 目标桶及其投递策略由 AZ 管理，配置要求见 docs/s3-access-logging.md。
-resource "aws_s3_bucket_logging" "files" {
-  bucket        = aws_s3_bucket.files.id
-  target_bucket = var.s3_access_log_bucket_name
-  target_prefix = local.s3_access_log_prefix
-
-  lifecycle {
-    precondition {
-      condition     = var.s3_access_log_bucket_name != local.file_bucket_name
-      error_message = "访问日志必须写入独立日志桶，不能投递回应用桶自身。"
-    }
-  }
-}
-
 # SSE-KMS 使用本项目创建的 CMK，不能退回 SSE-S3 或 aws/s3。
 resource "aws_s3_bucket_server_side_encryption_configuration" "files" {
   bucket = aws_s3_bucket.files.id
@@ -178,19 +163,6 @@ resource "aws_s3_bucket_public_access_block" "codebase" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_logging" "codebase" {
-  bucket        = aws_s3_bucket.codebase.id
-  target_bucket = var.s3_access_log_bucket_name
-  target_prefix = local.s3_access_log_prefix
-
-  lifecycle {
-    precondition {
-      condition     = var.s3_access_log_bucket_name != local.codebase_bucket_name
-      error_message = "访问日志必须写入独立日志桶，不能投递回应用桶自身。"
-    }
-  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "codebase" {

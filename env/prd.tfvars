@@ -1,20 +1,19 @@
 region      = "cn-north-1"
-project     = "REPLACE_ME"
+project     = "aiec"
 environment = "prd"
 
 mandatory_tags = {
-  AccountOwner = "REPLACE_ME"
-  Maintainer   = "REPLACE_ME"
-  CMDB         = "REPLACE_ME"
-  RequestID    = "REPLACE_ME"
-  CostCenter   = "REPLACE_ME"
+  applicationname  = "AIEC Platform"
+  applicationowner = "yongguo.he@astrazeneca.com"
+  "Cost Center"    = "4109900005"
+  "IDMD No"        = "CSE-13326"
+  applicationid    = "SNSVC0008172"
+  environment      = "Prod"
+  creationdate     = "xx/xx/2026" # 部署前按 AZ 要求填写实际创建日期。
 }
 
 # 不自动触发，构建由人工或外部流水线发起。
 enable_build_webhook = false
-
-# AZ 集中访问日志桶（同账号、同区域），需预先配置投递权限。
-s3_access_log_bucket_name = "REPLACE_ME-access-logs"
 
 log_retention_days = 365
 

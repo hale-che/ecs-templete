@@ -114,10 +114,9 @@
 | 私有子网 ID（已提供） | 三环境 `subnet_ids` 均已填 `subnet-8c4c1efb`、`subnet-0886d048a9ec36d81` |
 | 安全组 ID（已提供） | 三环境的 `services.*.security_group_ids` 均已填 `sg-0960c20f67f17cb68` |
 | **2 个**目标组 ARN（只有两个前端） | `services.*.target_group_arn` |
-| 强制 Tag 的**真实键名** | `variables.tf` 的 `mandatory_tags` type + 三个 tfvars |
+| 强制 Tag 的实际值及创建日期 | 七个键名已在 `variables.tf` 定义，值填写在三个 tfvars 的 `mandatory_tags` 中 |
 | RDS 密码的 Secret ARN | `services.backend.secrets` |
 | KMS 管理员和实际部署角色的 IAM ARN | `kms_administrator_arns`；本模板创建 S3 和 TLS Secret 的 CMK |
-| S3 访问日志目标桶及其投递权限 | `s3_access_log_bucket_name`；目标桶要求见 `s3-access-logging.md` |
 | RDS 等外部 Secret 的 CMK ARN（如使用） | 引用该 Secret 的服务的 `secrets_kms_key_arns` |
 | **TLS 证书内容** | Terraform 创建 Secret 容器并自动注入其 ARN；证书值由人工录入，见 README |
 
@@ -128,7 +127,7 @@
 | 字段 | 填什么 | 不填的后果 |
 | --- | --- | --- |
 | `project` | 项目标识，小写，2–17 字符 | plan 报错 |
-| `mandatory_tags` 五个字段 | AZ 清单上的值 | plan 报错，不许留空 |
+| `mandatory_tags` 七个字段 | 已填所提供的值；创建日期需填写实际值 | 空值会导致 plan 报错；非空占位值仍需人工替换 |
 | `services.*.repository` ×3 | 三个 ECR 仓库名 | plan 过，任务起不来 |
 | `services.*.tag` ×3 | **只有 PRD 要填**，DEV/PPD 是 `latest` | 同上 |
 

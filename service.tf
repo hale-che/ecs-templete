@@ -7,7 +7,6 @@ resource "aws_ecs_service" "this" {
     aws_iam_role_policy.task,
     aws_cloudwatch_log_group.this,
     aws_s3_bucket_policy.files,
-    aws_s3_bucket_logging.files,
   ]
 
   name            = local.name[each.key]
