@@ -3,17 +3,25 @@ data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
 locals {
-  partition   = data.aws_partition.current.partition
-  account_id  = data.aws_caller_identity.current.account_id
+  partition  = data.aws_partition.current.partition
+  account_id = data.aws_caller_identity.current.account_id
   # aws-cn 下 dns_suffix 是 amazonaws.com.cn，手写最容易漏掉那个 .cn。
   ecr_registry = "${local.account_id}.dkr.ecr.${var.region}.${data.aws_partition.current.dns_suffix}"
 
-  # AZ 命名规范：AZ-CNRDIT-<ENV>-<项目标识>[-<服务名>]。集群不带服务名，三个服务共用。
-  cluster_name = "AZ-CNRDIT-${var.environment}-${var.project}"
+  # 评审命名要求：az-cn-rdit-<project>-<资源用途>-<dev|ppd|prd>。
+  name_prefix  = "az-cn-rdit-${var.project}"
+  cluster_name = "${local.name_prefix}-ecs-fargate-${var.environment}"
 
   name = {
-    for k in keys(var.services) : k => "${local.cluster_name}-${k}"
+    for k in keys(var.services) : k => "${local.name_prefix}-${k}-${var.environment}"
   }
+
+  execution_role_name = { for k in keys(var.services) : k => "${local.name_prefix}-${k}-ecs-execution-role-${var.environment}" }
+  task_role_name      = { for k in keys(var.services) : k => "${local.name_prefix}-${k}-ecs-task-role-${var.environment}" }
+  build_role_name     = { for k in keys(var.services) : k => "${local.name_prefix}-${k}-build-role-${var.environment}" }
+  build_name          = { for k in keys(var.services) : k => "${local.name_prefix}-${k}-build-${var.environment}" }
+  build_project_arn   = { for k, name in local.build_name : k => "arn:${local.partition}:codebuild:${var.region}:${local.account_id}:project/${name}" }
+  tls_secret_name     = "${local.name_prefix}-tls-${var.environment}"
 
   tags = merge(var.mandatory_tags, {
     Environment = var.environment
@@ -23,8 +31,8 @@ locals {
 
   log_group = { for k, v in local.name : k => "/ecs/${v}" }
 
-  # S3 桶名只收小写，所以不能直接用 cluster_name。
-  file_bucket_name = coalesce(var.file_bucket_name, lower("${local.cluster_name}-files"))
+  file_bucket_name     = coalesce(var.file_bucket_name, "${local.name_prefix}-files-${var.environment}")
+  s3_access_log_prefix = "${local.name_prefix}-${var.environment}/s3/"
 
   ecr_arn = {
     for k, s in var.services :
@@ -38,7 +46,7 @@ locals {
 
   build_log_stream_arn = {
     for k, v in local.name :
-    k => "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:/aws/codebuild/${v}:log-stream:*"
+    k => "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:/aws/codebuild/${local.build_name[k]}:log-stream:*"
   }
 
   log_stream_arn = {
@@ -72,9 +80,6 @@ locals {
 
       readonlyRootFilesystem = s.readonly_root_filesystem
 
-      # name 是 Service Connect 引用端口的方式，不能省。
-      # 不设 appProtocol：应用自己终止 TLS，Envoy 要走 L4 透传，
-      # 设成 http 它会试图解析加密流量，连接建得起来但请求全失败。
       portMappings = [{
         name          = k
         containerPort = s.port

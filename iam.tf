@@ -11,7 +11,9 @@ data "aws_iam_policy_document" "assume_role" {
       identifiers = ["ecs-tasks.amazonaws.com"]
     }
 
-    # 防混淆代理：限定只有本账号本区域的 ECS 任务能扮演。
+    # ECS 不支持在任务角色 SourceArn 中限定具体集群；不能伪造 Project 条件导致任务无法启动。
+    # 保留账号/区域的防混淆代理条件，项目隔离由具体资源 ARN、KMS 条件和 PassRole 限定落实。
+    # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html
     condition {
       test     = "StringEquals"
       variable = "aws:SourceAccount"
@@ -33,15 +35,15 @@ data "aws_iam_policy_document" "assume_role" {
 resource "aws_iam_role" "execution" {
   for_each = var.services
 
-  name               = "${local.name[each.key]}-ecs-execution-role"
+  name               = local.execution_role_name[each.key]
   description        = "ECS agent role for ${local.name[each.key]}. Managed by Terraform."
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 
-  tags = { Name = "${local.name[each.key]}-ecs-execution-role" }
+  tags = { Name = local.execution_role_name[each.key] }
 
   lifecycle {
     precondition {
-      condition     = length("${local.name[each.key]}-ecs-execution-role") <= 64
+      condition     = length(local.execution_role_name[each.key]) <= 64
       error_message = "角色名超过 IAM 的 64 字符上限，缩短 project 或服务名。"
     }
   }
@@ -88,12 +90,34 @@ data "aws_iam_policy_document" "execution" {
     }
   }
 
+  dynamic "statement" {
+    for_each = length(local.secret_kms_key_arns[each.key]) > 0 ? [1] : []
+
+    content {
+      sid       = "DecryptOwnSecrets"
+      effect    = "Allow"
+      actions   = ["kms:Decrypt"]
+      resources = local.secret_kms_key_arns[each.key]
+
+      condition {
+        test     = "StringEquals"
+        variable = "kms:ViaService"
+        values   = [local.kms_secrets_via_service]
+      }
+
+      condition {
+        test     = "StringEquals"
+        variable = "kms:EncryptionContext:SecretARN"
+        values   = local.secret_arns[each.key]
+      }
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "execution" {
   for_each = var.services
 
-  name   = "${local.name[each.key]}-ecs-execution-policy"
+  name   = "${local.name_prefix}-${each.key}-ecs-execution-policy-${var.environment}"
   role   = aws_iam_role.execution[each.key].id
   policy = data.aws_iam_policy_document.execution[each.key].json
 }
@@ -105,11 +129,11 @@ resource "aws_iam_role_policy" "execution" {
 resource "aws_iam_role" "task" {
   for_each = var.services
 
-  name               = "${local.name[each.key]}-ecs-task-role"
+  name               = local.task_role_name[each.key]
   description        = "Application role for ${local.name[each.key]}. Managed by Terraform."
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 
-  tags = { Name = "${local.name[each.key]}-ecs-task-role" }
+  tags = { Name = local.task_role_name[each.key] }
 }
 
 locals {
@@ -147,6 +171,30 @@ data "aws_iam_policy_document" "task" {
   }
 
   dynamic "statement" {
+    for_each = each.value.file_bucket_access ? [1] : []
+
+    content {
+      sid       = "UseFileBucketKmsKey"
+      effect    = "Allow"
+      actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
+      resources = [aws_kms_key.files.arn]
+
+      condition {
+        test     = "StringEquals"
+        variable = "kms:ViaService"
+        values   = [local.kms_s3_via_service]
+      }
+
+      # Bucket Key 开启时上下文是桶 ARN；关闭或旧对象的上下文是对象 ARN。
+      condition {
+        test     = "StringLike"
+        variable = "kms:EncryptionContext:aws:s3:arn"
+        values   = [aws_s3_bucket.files.arn, "${aws_s3_bucket.files.arn}/*"]
+      }
+    }
+  }
+
+  dynamic "statement" {
     for_each = each.value.task_role_policy_statements
 
     content {
@@ -171,7 +219,7 @@ data "aws_iam_policy_document" "task" {
 resource "aws_iam_role_policy" "task" {
   for_each = local.services_with_task_policy
 
-  name   = "${local.name[each.key]}-ecs-task-policy"
+  name   = "${local.name_prefix}-${each.key}-ecs-task-policy-${var.environment}"
   role   = aws_iam_role.task[each.key].id
   policy = data.aws_iam_policy_document.task[each.key].json
 }
@@ -181,6 +229,8 @@ resource "aws_iam_role_policy" "task" {
 # ---------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "codebuild_assume" {
+  for_each = var.services
+
   statement {
     effect  = "Allow"
     actions = ["sts:AssumeRole"]
@@ -195,17 +245,24 @@ data "aws_iam_policy_document" "codebuild_assume" {
       variable = "aws:SourceAccount"
       values   = [local.account_id]
     }
+
+    # 精确到本环境、本服务的构建项目；不能只允许整个账号。
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [local.build_project_arn[each.key]]
+    }
   }
 }
 
 resource "aws_iam_role" "codebuild" {
   for_each = var.services
 
-  name               = "${local.name[each.key]}-build-role"
+  name               = local.build_role_name[each.key]
   description        = "CodeBuild role for ${local.name[each.key]}. Managed by Terraform."
-  assume_role_policy = data.aws_iam_policy_document.codebuild_assume.json
+  assume_role_policy = data.aws_iam_policy_document.codebuild_assume[each.key].json
 
-  tags = { Name = "${local.name[each.key]}-build-role" }
+  tags = { Name = local.build_role_name[each.key] }
 }
 
 data "aws_iam_policy_document" "codebuild" {
@@ -246,15 +303,63 @@ data "aws_iam_policy_document" "codebuild" {
     effect    = "Allow"
     actions   = ["ecs:UpdateService", "ecs:DescribeServices"]
     resources = [local.service_arn[each.key]]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Project"
+      values   = [var.project]
+    }
+
+    condition {
+      test     = "ArnEquals"
+      variable = "ecs:cluster"
+      values   = [aws_ecs_cluster.this.arn]
+    }
   }
 
   # 方案 B（注册新 revision）才需要下面两条。定了方案 A 就删掉。
-  # Task Definition 的 API 不支持资源限定，只能是 "*"。
+  # Register 支持 family ARN 和请求标签；Describe 不支持资源级限定，分开授权。
   statement {
     sid       = "RegisterTaskDefinition"
     effect    = "Allow"
-    actions   = ["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"]
+    actions   = ["ecs:RegisterTaskDefinition"]
+    resources = ["arn:${local.partition}:ecs:${var.region}:${local.account_id}:task-definition/${local.name[each.key]}:*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = [var.project]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values   = [var.environment]
+    }
+  }
+
+  statement {
+    sid       = "TagOwnNewTaskDefinition"
+    effect    = "Allow"
+    actions   = ["ecs:TagResource"]
+    resources = ["arn:${local.partition}:ecs:${var.region}:${local.account_id}:task-definition/${local.name[each.key]}:*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ecs:CreateAction"
+      values   = ["RegisterTaskDefinition"]
+    }
+  }
+
+  statement {
+    sid       = "DescribeTaskDefinitionMetadata"
+    effect    = "Allow"
+    actions   = ["ecs:DescribeTaskDefinition"]
     resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = [var.region]
+    }
   }
 
   statement {
@@ -274,7 +379,7 @@ data "aws_iam_policy_document" "codebuild" {
 resource "aws_iam_role_policy" "codebuild" {
   for_each = var.services
 
-  name   = "${local.name[each.key]}-build-policy"
+  name   = "${local.name_prefix}-${each.key}-build-policy-${var.environment}"
   role   = aws_iam_role.codebuild[each.key].id
   policy = data.aws_iam_policy_document.codebuild[each.key].json
 }

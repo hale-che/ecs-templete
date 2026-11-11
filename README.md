@@ -2,7 +2,7 @@
 
 三个服务（`frontend-ext` / `frontend-int` / `backend`）的 Task Definition，区域 `cn-north-1`。
 
-管：ECS 集群、三个服务、Task Definition、日志组、应用文件桶、TLS 证书的 Secret 容器、CodeBuild 项目、每服务的 IAM 角色、PRD 的自动扩缩容。
+管：ECS 集群、三个服务、Task Definition、日志组、应用文件桶、TLS 证书的 Secret 容器、CodeBuild 项目、每服务的 IAM 角色、项目专用的 S3 / TLS Secret CMK。
 不管：安全组、ALB / 目标组 / 监听器、ECR 仓库、RDS。前三样由 AZ 创建，ID 填进 tfvars。
 
 apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任务在跑。
@@ -13,7 +13,7 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 
 | 位置 | 填什么 |
 | --- | --- |
-| `project` | 项目标识，小写，≤20 字符 |
+| `project` | 项目标识，小写，2–17 字符 |
 | `mandatory_tags` | AZ 下发的五个字段 |
 | `repository` ×3 | 三个 ECR 仓库名 |
 | `tag` ×3 | 只有 PRD 要填，DEV/PPD 是 `latest` |
@@ -21,11 +21,17 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | `security_group_ids` ×3 | AZ 给的安全组 |
 | `target_group_arn` ×2 | AZ 给的目标组，只有两个前端 |
 | `repo_url` ×3 | GitHub 仓库地址 |
+| `kms_administrator_arns` | AZ 密钥管理员及实际执行 Terraform 的 IAM 角色 ARN，每环境单独填写 |
+| `s3_access_log_bucket_name` | AZ 的同账号同区域访问日志目标桶，投递权限要求见 `docs/s3-access-logging.md` |
 
-其余字段都不用动。规格（CPU / 内存 / 任务数）已经按确认过的表填好了。
+S3 和 TLS Secret 分别使用本项目创建的 CMK，自动开启轮换。外部 RDS Secret 如使用 CMK，接入方式见 `docs/kms.md`。任务数固定：DEV/PPD 每服务 1 个，PRD 每服务 2 个。
 
 交接给 AZ 看 `docs/handover.md`：谁填什么、填在哪、不填会怎样。
 开发打镜像看 `docs/image-requirements.md`。
+
+AZ 运维人员的 Federated Role 只需交付 Policy，见 [运维权限交付说明](docs/federated-ops.md)。
+`policies/federated-ops/` 可离线生成只读及运维操作两份 JSON；`federated-ops.tf` 同时提供主项目 outputs。
+角色、SSO 和策略关联由 AZ 管理，本模板不创建人员角色。
 
 ## 结构
 
@@ -36,11 +42,11 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
     cluster.tf      ECS 集群，一个环境一个，三服务共用
     main.tf         Task Definition
     service.tf      ECS 服务，含 ignore_changes 和部署熔断
-    autoscaling.tf  PRD 的 2-4 扩缩容，只给填了 min/max 的服务建
     iam.tf          执行角色 + 任务角色
     logs.tf         日志组
     codebuild.tf    每服务一个构建项目 + webhook
     s3.tf           应用文件桶，Intelligent-Tiering
+    kms.tf          创建每环境 S3 / TLS Secret CMK、别名、轮换和项目隔离 Key Policy
     secrets.tf      TLS 证书的 Secret 容器（不含值）
     outputs.tf      按服务名索引
     env/*.tfvars    DEV / PPD / PRD，唯一有环境差异的地方
@@ -56,9 +62,7 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | `frontend-int` | 512 / 1024 | 1024 / 2048 | 1024 / 2048 ×2 |
 | `backend` | 2048 / 4096 | 2048 / 8192 | 4096 / 8192 ×2 |
 
-CPU 单位 / 内存 MiB。PRD 三个服务都是 2 个任务起步，扩缩容 2-4，按 CPU 70% 目标跟踪（**阈值待压测确认**）。
-
-DEV / PPD 不填 `min_capacity`/`max_capacity`，所以不建 Auto Scaling，任务数固定。
+CPU 单位 / 内存 MiB。三个环境均不创建 Auto Scaling：DEV/PPD 每服务固定 1 个任务，PRD 每服务固定 2 个任务。`desired_count` 由 Terraform 持续管理。
 
 ## 规范对照
 
@@ -67,12 +71,13 @@ DEV / PPD 不填 `min_capacity`/`max_capacity`，所以不建 Auto Scaling，任
 | Terraform 1.6 | `versions.tf` `~> 1.6.0` |
 | AWS Provider > 5.6 | `versions.tf` `>= 5.60.0, < 6.0.0` |
 | 禁止硬编码 | 环境差异只在 `env/*.tfvars` |
-| 命名规范 | `AZ-CNRDIT-<ENV>-<project>-<服务名>` |
+| 命名规范 | `az-cn-rdit-<project>-<资源用途>-<dev|ppd|prd>` |
 | 最小权限 IAM | 每服务一对角色，ARN 按该服务自己的仓库和密钥收口 |
-| IAM 条件限制 | 信任策略带 `aws:SourceAccount` / `aws:SourceArn` |
+| IAM 条件限制 | CodeBuild 信任精确限定项目 ARN；支持的操作增加项目标签/集群条件；ECS 信任限制见整改记录 |
 | 强制 Tag | 五个字段必填且不许留空，走 `default_tags` |
 | 密码不硬编码 | 只传 Secret ARN，密文不进 state |
-| 加密 | 日志和密钥都用 AWS 托管密钥，不配自管 CMK |
+| S3 加密 | SSE-KMS，使用本模板创建的项目 CMK；桶策略禁止显式改用其他加密方式或密钥 |
+| Secrets 加密 | TLS Secret 使用本项目 CMK；外部 Secret 按实际 CMK 配置执行角色权限 |
 
 `mandatory_tags` 的键名是我按理解写的，**拿到 AZ 清单后要核对改名**。IAM 权限清单见 `docs/iam-permissions.md`。
 
@@ -132,16 +137,25 @@ Terraform 管配置，CodeBuild 管镜像和部署，互不覆盖。靠两个设
 - **Task Definition 不设 `ignore_changes`，但 `track_latest` 必须是 `false`。**
   revision 不可变，state 里记的那个一直存在，CodeBuild 新注册的 revision 在 plan 里根本不出现。
   `track_latest = true` 会变成按 family 读最新，于是天天有偏移。
-- **服务设 `ignore_changes = [task_definition, desired_count]`。**
-  前者让 CodeBuild 指定的 revision 不被 apply 拽回去，后者让 Auto Scaling 能改任务数。
+- **服务设 `ignore_changes = [task_definition]`。**
+  让 CodeBuild 指定的 revision 不被 apply 拽回去。自动扩缩容已关闭，任务数由 Terraform 维护。
 
 改动这两处会直接破坏上面的发布流程。
 
 ## 应用文件桶
 
-一个环境一个，名字 `az-cnrdit-<env>-<project>-files`（S3 桶名只收小写）。
+一个环境一个，名字 `az-cn-rdit-<project>-files-<environment>`（S3 桶名只收小写）。
 后端读写它，任务角色权限由 `file_bucket_access = true` 自动生成 —— 对象操作限在桶内，
 `ListBucket` 的资源只能是桶本身，这是 S3 的规则。
+
+按最新 PR 评审，本模板为每个环境创建专用 S3 CMK 和 TLS Secret CMK；密钥由 AZ 管理员运维。
+S3 开启 SSE-KMS 和 Bucket Key，后端任务角色获得限定到文件桶、密钥和 S3 服务上下文的权限。
+两把 CMK 均开启自动轮换、配置 30 天删除等待期，并设置 Terraform `prevent_destroy`。
+部署前填 `kms_administrator_arns`，其中必须包含实际部署角色的 IAM ARN。详见 `docs/kms.md`。
+
+上传不带加密请求头时使用桶默认值；显式指定加密时必须同时指定 `aws:kms` 和上述完整 key ARN。
+SSE-S3、SSE-C、其他密钥，以及只指定 `aws:kms` 而不指定 key ARN 的上传会被拒绝。
+修改默认加密不会重加密已有对象或历史版本；迁移和验收步骤见 `docs/kms.md`。
 
 存储策略按需求配的：
 
@@ -186,7 +200,10 @@ Terraform 管配置，CodeBuild 管镜像和部署，互不覆盖。靠两个设
 TLS 的 ARN 由 Terraform 产生，没法写进 tfvars，所以在 `locals.tf` 里合进每个服务的 `secrets`。
 **tfvars 的 `secrets` 只放 AZ 给的那些**，不用再手抄 ARN 末尾的 6 位随机后缀。
 
-执行角色的 `secretsmanager:GetSecretValue` 权限按实际引用的 ARN 自动生成，加密钥不用改 IAM。
+执行角色的 `secretsmanager:GetSecretValue` 权限按实际引用的 ARN 自动生成。
+TLS Secret 固定使用本项目创建的 CMK。外部 Secret 如使用 CMK，在引用它的服务中填写
+`secrets_kms_key_arns`；执行角色解密权限会限制到具体 key、Secrets Manager 及实际 Secret 上下文，
+AZ 仍需为外部密钥配置相应 Key Policy。
 
 非生产的 `recovery_window_in_days = 0`：否则 destroy 之后同名 Secret 在 30 天恢复期内重建会被拒。
 
@@ -213,8 +230,8 @@ PPD / PRD 关闭，手工或外部流水线触发：
 
     aws codebuild start-build --project-name <terraform output codebuild_projects>
 
-**IAM 按方案 B 的权限写的**（B 是 A 的超集）。定了方案 A 就删 `iam.tf` 里
-`RegisterTaskDefinition` 和 `PassExecutionAndTaskRoles` 两条语句。
+**IAM 按方案 B 的权限写的**。注册新 revision 时必须保留 `Project`、`Environment` 和其余强制标签；
+注册和 TagResource 权限只限定本服务 family。若采用方案 A，可移除注册/打标签/角色传递权限。
 
 ## 执行
 
@@ -237,15 +254,18 @@ PPD / PRD 关闭，手工或外部流水线触发：
     内部 ALB  →8443 HTTPS→  frontend-int
                               └─8002 HTTPS─→  backend   （Service Connect，不经 ALB）
 
-全链路 HTTPS，证书由 Secrets Manager 注入容器，三跳都不校验证书。
+目标是全链路 HTTPS，证书由 Secrets Manager 注入容器；镜像须加载证书并开启 TLS。
+Service Connect 当前按 TCP 透传应用 TLS，开启代理本身不会启用 HTTPS。
+前端 Nginx 到后端沿用 `proxy_ssl_verify off` 的自签证书方案，传输加密但不验证后端身份。
 
 - 两个前端挂 ALB 目标组，健康检查由目标组做，配在 ALB 那边
 - **后端不挂 ALB**，健康检查靠 `health_check_command`，所以**后端镜像里必须有 `curl`**
 - 前端调后端用 `https://backend-service:8002`，三个环境同名
+- Terraform 校验两个前端的 `BACKEND_URL` 必须使用 HTTPS；镜像配置和部署后验收见 [镜像要求](docs/image-requirements.md)
 
 ## 暂不支持
 
-挂卷（EFS / tmpfs）、ECS Exec、多容器 sidecar、SSM Parameter Store、服务发现（Service Connect / Cloud Map）。要哪个再加。
+挂卷（EFS / tmpfs）、ECS Exec、自定义多容器 sidecar、SSM Parameter Store。Service Connect 及其托管代理已启用。
 
 ## 注意事项
 
@@ -256,7 +276,11 @@ PPD / PRD 关闭，手工或外部流水线触发：
 - 第一次 apply 时镜像必须已经推到 ECR，否则服务起不来任务，部署熔断会回滚。
 - Container Insights 默认开着，按指标量计费。DEV 要省钱改 `cluster.tf`。
 - 服务名同时是容器名，所以只收小写字母数字连字符，有校验。
-- **前端 nginx 必须用 `resolver` + 变量形式的 `proxy_pass`。** 默认只在启动时解析一次 ALB 的 DNS 然后永久缓存，ALB 换 IP 后就打到死地址。
+- **前端 Nginx 在启动时将 `BACKEND_URL` 渲染到静态 `proxy_pass`。** Service Connect 的端点通过任务内 hosts 解析，不使用旧的 ALB 动态 DNS 模板；先创建后端端点，再启动或重新部署前端任务。
 - 任务起不来且报 AssumeRole 失败时，先看 `iam.tf` 里信任策略的 `aws:SourceArn` 条件。
 - 改服务名（map 的 key）等于删一个建一个，角色和日志组一起重建。
 - `ecr:GetAuthorizationToken` 只能用 `*`，API 不支持限定，安全扫描会报，走风险申请。
+
+## 本轮 PR findings
+
+逐项整改、AWS 权限限制及部署迁移注意事项见 [评审整改记录](review-findings.md)。

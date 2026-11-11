@@ -1,10 +1,13 @@
 resource "aws_ecs_service" "this" {
   for_each = var.services
 
-  # 两个隐式依赖 Terraform 推不出来：执行角色的内联策略、日志组。
+  # 启动前完成角色授权、日志组和应用桶加密，避免任务先启动并写入旧加密格式。
   depends_on = [
     aws_iam_role_policy.execution,
+    aws_iam_role_policy.task,
     aws_cloudwatch_log_group.this,
+    aws_s3_bucket_policy.files,
+    aws_s3_bucket_logging.files,
   ]
 
   name            = local.name[each.key]
@@ -21,13 +24,10 @@ resource "aws_ecs_service" "this" {
     assign_public_ip = false
   }
 
-  # 服务间调用：前端用 https://<service_connect_name>:<port> 直接访问后端，不经 ALB。
-  # 每个任务会多一个 Envoy sidecar，占的是任务自己的 cpu/memory 配额。
   service_connect_configuration {
     enabled   = true
     namespace = aws_service_discovery_http_namespace.this.arn
 
-    # 只有填了 service_connect_name 的服务对外暴露名字，其余只作为客户端。
     dynamic "service" {
       for_each = each.value.service_connect_name == null ? [] : [each.value.service_connect_name]
 
@@ -42,7 +42,6 @@ resource "aws_ecs_service" "this" {
       }
     }
 
-    # Envoy 自己的日志，和业务容器共用日志组，用前缀区分。
     log_configuration {
       log_driver = "awslogs"
 
@@ -84,8 +83,8 @@ resource "aws_ecs_service" "this" {
 
   lifecycle {
     # task_definition：CodeBuild 发版会把服务指到新 revision，不忽略的话下次 apply 会拽回来。
-    # desired_count：Auto Scaling 会改它。
-    ignore_changes = [task_definition, desired_count]
+    # 已关闭 Auto Scaling，desired_count 由 Terraform 持续管理。
+    ignore_changes = [task_definition]
 
     # 不挂 ALB 又没有容器健康检查的话，进程挂死不退出时 ECS 不会替换它。
     precondition {

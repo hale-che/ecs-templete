@@ -50,6 +50,25 @@ output "file_bucket" {
   value       = aws_s3_bucket.files.bucket
 }
 
+output "file_bucket_kms_key_arn" {
+  description = "本环境创建的应用文件桶 CMK。"
+  value       = aws_kms_key.files.arn
+}
+
+output "tls_kms_key_arn" {
+  description = "本环境创建的 TLS Secret CMK。"
+  value       = aws_kms_key.secrets.arn
+}
+
+output "s3_access_logging" {
+  description = "交给 AZ 配置集中日志桶投递授权的源桶、目标桶和前缀。"
+  value = {
+    source_bucket = aws_s3_bucket.files.bucket
+    target_bucket = var.s3_access_log_bucket_name
+    target_prefix = local.s3_access_log_prefix
+  }
+}
+
 output "tls_secret_arn" {
   description = "TLS 证书的 Secret。Terraform 只建容器，值要手工填，见 README。"
   value       = aws_secretsmanager_secret.tls.arn
