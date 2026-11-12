@@ -1,6 +1,6 @@
 locals {
-  # Fargate 的 CPU/内存组合是固定表，组合错了要到 apply 才报。
-  # tomap + tolist 是必须的：值类型不统一时，用变量做下标取不出来。
+  # Fargate supports fixed CPU and memory combinations; an invalid combination causes an error at apply. | Fargate 的 CPU/内存组合是固定表，组合错了要到 apply 才报。
+  # tomap and tolist are required because mixed value types cannot be indexed with a variable. | tomap + tolist 是必须的：值类型不统一时，用变量做下标取不出来。
   fargate_memory = tomap({
     "256"   = tolist([512, 1024, 2048])
     "512"   = range(1024, 4096 + 1, 1024)
@@ -34,8 +34,8 @@ resource "aws_ecs_task_definition" "this" {
 
   tags = { Name = local.name[each.key] }
 
-  # 不设 track_latest：Terraform 只认自己注册的那个 revision。CodeBuild 新注册的
-  # revision 不会被当成偏移，所以这里不需要 ignore_changes。
+  # Leave track_latest unset: Terraform tracks only its own registered revision. A revision newly registered by CodeBuild | 不设 track_latest：Terraform 只认自己注册的那个 revision。CodeBuild 新注册的
+  # is not treated as drift, so ignore_changes is unnecessary here. | revision 不会被当成偏移，所以这里不需要 ignore_changes。
   track_latest = false
 
   lifecycle {

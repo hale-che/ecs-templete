@@ -1,4 +1,4 @@
-# 按服务名索引。服务名同时也是容器名。
+# Index by service name, which is also the container name. | 按服务名索引。服务名同时也是容器名。
 
 output "cluster_name" {
   value = aws_ecs_cluster.this.name

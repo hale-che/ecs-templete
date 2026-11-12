@@ -1,4 +1,4 @@
-# 纯 JSON 生成模块：无 provider、resource、data source，不创建或关联 IAM 角色。
+# Pure JSON generation module: no provider, resource, or data source; creates and attaches no IAM roles. | 纯 JSON 生成模块：无 provider、resource、data source，不创建或关联 IAM 角色。
 terraform {
   required_version = "~> 1.6.0"
 }
@@ -22,7 +22,7 @@ locals {
       {
         Sid    = "RegionalDiscoveryAndMetrics"
         Effect = "Allow"
-        # 这些 API 不支持项目 ARN 限定，会暴露当前区域的列表/指标/任务定义元数据。
+        # These APIs cannot be scoped to project ARNs and expose regional resource lists, metrics, and task definition metadata. | 这些 API 不支持项目 ARN 限定，会暴露当前区域的列表/指标/任务定义元数据。
         Action = [
           "ecs:ListClusters", "ecs:ListTaskDefinitions", "ecs:ListTaskDefinitionFamilies",
           "ecs:DescribeTaskDefinition", "logs:DescribeLogGroups", "codebuild:ListProjects",
@@ -89,7 +89,7 @@ locals {
     ]
   }
 
-  # 与只读策略一起关联。发布由现有 CodeBuild 执行，不给人员直接注册任务定义或推镜像的权限。
+  # Attach alongside the readonly policy. Existing CodeBuild projects handle releases; do not grant personnel direct task definition registration or image push permissions. | 与只读策略一起关联。发布由现有 CodeBuild 执行，不给人员直接注册任务定义或推镜像的权限。
   operations_policy = {
     Version = "2012-10-17"
     Statement = concat(
@@ -120,8 +120,8 @@ locals {
           Effect   = "Allow"
           Action   = ["codebuild:StartBuild"]
           Resource = local.projects
-          # 只允许使用项目配置，避免通过 StartBuild 改写构建命令、目标或服务角色。
-          # sourceVersion 不在这些条件内，仍可选择仓库中的分支/commit。
+          # Use only the project configuration; prevent StartBuild overrides of build commands, targets, and service roles. | 只允许使用项目配置，避免通过 StartBuild 改写构建命令、目标或服务角色。
+          # sourceVersion is not restricted by these conditions; a branch or commit in the repository can still be selected. | sourceVersion 不在这些条件内，仍可选择仓库中的分支/commit。
           Condition = {
             Null = { for key in [
               "codebuild:source.buildspec", "codebuild:source.location", "codebuild:source.auth.type",
@@ -137,7 +137,7 @@ locals {
           Sid    = "StopProjectBuilds"
           Effect = "Allow"
           Action = ["codebuild:StopBuild"]
-          # StopBuild 的 IAM 资源类型是 project，不是 build。
+          # StopBuild uses the project IAM resource type, not build. | StopBuild 的 IAM 资源类型是 project，不是 build。
           Resource = local.projects
         },
       ],

@@ -5,10 +5,10 @@ data "aws_partition" "current" {}
 locals {
   partition  = data.aws_partition.current.partition
   account_id = data.aws_caller_identity.current.account_id
-  # aws-cn 下 dns_suffix 是 amazonaws.com.cn，手写最容易漏掉那个 .cn。
+  # In aws-cn, dns_suffix is amazonaws.com.cn; using the data source avoids omitting .cn. | aws-cn 下 dns_suffix 是 amazonaws.com.cn，手写最容易漏掉那个 .cn。
   ecr_registry = "${local.account_id}.dkr.ecr.${var.region}.${data.aws_partition.current.dns_suffix}"
 
-  # 评审命名要求：az-cn-rdit-<project>-<资源用途>-<dev|ppd|prd>。
+  # Required resource naming: az-cn-rdit-<project>-<purpose>-<dev|ppd|prd>. | 评审命名要求：az-cn-rdit-<project>-<资源用途>-<dev|ppd|prd>。
   name_prefix  = "az-cn-rdit-${var.project}"
   cluster_name = "${local.name_prefix}-ecs-fargate-${var.environment}"
 
@@ -54,8 +54,8 @@ locals {
     k => "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:${v}:log-stream:*"
   }
 
-  # TLS 证书的 ARN 由 Terraform 产生，没法写进 tfvars，所以在这里合进每个服务。
-  # tfvars 的 secrets 只放 AZ 给的（RDS 密码之类），同名时以 tfvars 为准。
+  # Terraform creates the TLS certificate ARN, so merge it into each service here rather than in tfvars. | TLS 证书的 ARN 由 Terraform 产生，没法写进 tfvars，所以在这里合进每个服务。
+  # Only put AZ-supplied secrets, such as the RDS password, in tfvars; tfvars takes precedence when names conflict. | tfvars 的 secrets 只放 AZ 给的（RDS 密码之类），同名时以 tfvars 为准。
   secrets_effective = {
     for k, s in var.services : k => merge(
       {
@@ -66,7 +66,7 @@ locals {
     )
   }
 
-  # IAM 要密钥本体的 ARN。ECS 的 valueFrom 可以带 :json-key:: 后缀，截掉前 7 段还原。
+  # IAM requires the base secret ARN. ECS valueFrom may include a :json-key:: suffix; keep the first seven colon-separated segments. | IAM 要密钥本体的 ARN。ECS 的 valueFrom 可以带 :json-key:: 后缀，截掉前 7 段还原。
   secret_arns = {
     for k, v in local.secrets_effective :
     k => distinct([for a in values(v) : join(":", slice(split(":", a), 0, 7))])
@@ -100,7 +100,7 @@ locals {
     }
   }
 
-  # 用 merge 追加而不是写 healthCheck = null：ECS 不接受显式 null 的容器属性。
+  # Append healthCheck with merge instead of setting it to null; ECS rejects explicit null container properties. | 用 merge 追加而不是写 healthCheck = null：ECS 不接受显式 null 的容器属性。
   container_definitions = {
     for k, s in var.services : k => [merge(
       local.container_base[k],

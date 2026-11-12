@@ -5,6 +5,9 @@ AZ 负责创建/选择 Federated Role、企业 SSO、信任策略及策略关联
 
 ## 交付文件
 
+已提供 AIEC DEV 专用 JSON 模板，见 [`policies/federated-ops/dev/`](../policies/federated-ops/dev/README.md)。
+项目和环境名称已固定为 `aiec` / `dev`；账号 ID 和三个 ECR 仓库名仍须替换，不能直接部署含占位符的模板。
+
 一次按一个账号、一个环境生成两份 JSON，建议在 AZ 侧分别建为客户托管策略：
 
 | 文件 | 用途 |

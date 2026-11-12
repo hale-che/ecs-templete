@@ -1,4 +1,4 @@
-# AZ 只要求 Policy：这里只生成 JSON，不创建人员角色、IdP 或策略关联。
+# AZ requires only Policy JSON; do not create personnel roles, an IdP, or policy attachments here. | AZ 只要求 Policy：这里只生成 JSON，不创建人员角色、IdP 或策略关联。
 module "federated_ops" {
   source = "./policies/federated-ops"
 

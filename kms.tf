@@ -1,7 +1,7 @@
-# 按最新评审要求：每环境创建自己的 S3 / TLS Secret CMK，AZ 接管运维。
-# Key Policy 先使用角色 ARN 条件字符串，避免 key -> role -> key 的循环依赖。
+# Per the latest review, create separate S3 and TLS Secret CMKs for each environment; AZ manages the keys. | 按最新评审要求：每环境创建自己的 S3 / TLS Secret CMK，AZ 接管运维。
+# Use role ARN condition strings in the key policy to avoid a key -> role -> key dependency cycle. | Key Policy 先使用角色 ARN 条件字符串，避免 key -> role -> key 的循环依赖。
 locals {
-  # KMS ViaService 在所有分区都使用 amazonaws.com，不能套用 aws-cn 的 DNS 后缀。
+  # KMS ViaService uses amazonaws.com in every partition; do not use the aws-cn DNS suffix. | KMS ViaService 在所有分区都使用 amazonaws.com，不能套用 aws-cn 的 DNS 后缀。
   kms_s3_via_service      = "s3.${var.region}.amazonaws.com"
   kms_secrets_via_service = "secretsmanager.${var.region}.amazonaws.com"
 
@@ -27,7 +27,7 @@ data "aws_iam_policy_document" "kms_administration" {
       type        = "AWS"
       identifiers = [local.account_root_arn]
     }
-    # 仅实际 root 身份恢复策略，不将整个账号的使用权限委派给任意 IAM 身份。
+    # Allow only the actual root identity to recover the policy, without delegating key usage to arbitrary IAM identities in the account. | 仅实际 root 身份恢复策略，不将整个账号的使用权限委派给任意 IAM 身份。
     condition {
       test     = "ArnEquals"
       variable = "aws:PrincipalArn"

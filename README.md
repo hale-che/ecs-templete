@@ -244,7 +244,10 @@ DEV 已配置为同一个 `https://github.com/AZU-RDIT/AIEC.git` 仓库，分别
 | 内网前端 `frontend-int` | `frontend-int/buildspec.yml` |
 | 后端 `backend` | `backend/buildspec.yml` |
 
-以上目录及文件需要在应用仓库的 `dev` 分支中存在；若实际目录不同，修改 `env/dev.tfvars` 的对应路径。
+以上目录及文件需要在应用仓库对应分支中存在：DEV 使用 `dev`，PPD / PRD 使用 `main`。
+三个环境已使用同一个 AZ 仓库及上述 buildspec 路径；ECR 仓库名和生产 tag 仍需填写。
+`frontend-ext` / `frontend-int` 仅存构建入口，两者都使用仓库根目录的 `frontend` 共享源码。
+`backend` 存后端源码和构建入口。交付布局及运行变量见应用交付包 `doc/container-images.md`。
 `buildspec` 文件放在子目录不会自动切换构建工作目录，构建命令须明确指定目录或先 `cd`。
 例如后端的 Dockerfile 不依赖仓库根目录文件时，可使用：
 
@@ -256,7 +259,8 @@ phases:
       - docker build -f backend/Dockerfile -t "$ECR_REPO:$IMAGE_TAG" backend
 ```
 
-这只展示构建步骤，应用仓库的完整 buildspec 还须包含 ECR 登录、推送及部署步骤。
+这只展示构建步骤。应用交付包的 buildspec 已包含 ECR 登录、构建、推送及 digest 记录，
+**当前不执行 ECS 部署**。上文的后续发版 A / B 是独立发布流程说明，不是当前 buildspec 的行为。
 如需读取根目录的共享文件，按实际 Dockerfile 调整构建上下文。
 `repository` 仍填写各服务自己的 ECR 镜像仓库名，与 Git 仓库及源码目录分别配置。
 
@@ -274,7 +278,7 @@ phases:
 
 没有这一步，构建拉不到代码，webhook 也建不出来。
 
-**触发**：`enable_build_webhook` 只在 DEV 开（推 `dev` 分支自动构建部署）。
+**触发**：`enable_build_webhook` 只在 DEV 开（推 `dev` 分支自动构建并推送镜像）。
 当前 webhook 按分支过滤，单仓库向 `dev` 推送一次会触发三个服务构建，未按目录过滤。
 PPD / PRD 关闭，手工或外部流水线触发：
 

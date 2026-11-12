@@ -1,10 +1,10 @@
-# 一个服务一个 CodeBuild 项目。buildspec 放应用仓库，这里只注入它需要的值。
-# GitHub 凭证是账号级的，手工建一次，不由 Terraform 管（见 README）。
+# One CodeBuild project per service. Keep buildspec in the application repository and inject its required values here. | 一个服务一个 CodeBuild 项目。buildspec 放应用仓库，这里只注入它需要的值。
+# GitHub credentials are account-wide and configured manually once, outside Terraform; see README. | GitHub 凭证是账号级的，手工建一次，不由 Terraform 管（见 README）。
 
 resource "aws_cloudwatch_log_group" "build" {
   for_each = var.services
 
-  # 自己建而不是让 CodeBuild 建：它建出来的日志组永不过期。
+  # Create the log group explicitly because groups created by CodeBuild never expire. | 自己建而不是让 CodeBuild 建：它建出来的日志组永不过期。
   name              = "/aws/codebuild/${local.build_name[each.key]}"
   retention_in_days = var.log_retention_days
 
@@ -15,7 +15,7 @@ resource "aws_codebuild_project" "build" {
   for_each = var.services
 
   name         = local.build_name[each.key]
-  description  = "Build and deploy ${local.name[each.key]}. Managed by Terraform."
+  description  = "Build and push ${local.name[each.key]} images to ECR. Managed by Terraform."
   service_role = aws_iam_role.codebuild[each.key].arn
 
   source {
@@ -37,10 +37,10 @@ resource "aws_codebuild_project" "build" {
     image        = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
     type         = "LINUX_CONTAINER"
 
-    # docker build 要 Docker daemon，少了这个构建直接失败。
+    # docker build requires a Docker daemon; builds fail without it. | docker build 要 Docker daemon，少了这个构建直接失败。
     privileged_mode = true
 
-    # 这几个值 buildspec 里不要硬编码，换环境自动跟着变。
+    # Do not hardcode these values in buildspec; they follow the selected environment automatically. | 这几个值 buildspec 里不要硬编码，换环境自动跟着变。
     environment_variable {
       name  = "ECR_REPO"
       value = "${local.ecr_registry}/${each.value.repository}"
@@ -76,7 +76,7 @@ resource "aws_codebuild_project" "build" {
   tags = { Name = local.build_name[each.key] }
 }
 
-# push 自动触发。生产默认关闭。
+# Trigger automatically on push; disabled by default in production. | push 自动触发。生产默认关闭。
 resource "aws_codebuild_webhook" "build" {
   for_each = { for k, v in var.services : k => v if var.enable_build_webhook }
 

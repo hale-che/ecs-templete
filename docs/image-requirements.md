@@ -47,9 +47,9 @@ nginx 不会自己读环境变量，镜像要在 entrypoint 里做一次替换�
 **在启动时用 envsubst 把地址写入静态 `proxy_pass`，保留 `/api` 请求路径：**
 
     location /api/ {
-      proxy_pass ${BACKEND_URL};          # envsubst 后是 https://backend-service:8002
-      proxy_ssl_server_name on;           # 后端是 HTTPS，SNI 要带上
-      proxy_ssl_verify off;               # 不校验后端证书（这也是默认值，写出来明确意图）
+      proxy_pass ${BACKEND_URL};          # After envsubst: https://backend-service:8002 | envsubst 后是 https://backend-service:8002
+      proxy_ssl_server_name on;           # The backend uses HTTPS; send SNI | 后端是 HTTPS，SNI 要带上
+      proxy_ssl_verify off;               # Disable backend certificate verification explicitly; this is also the default | 不校验后端证书（这也是默认值，写出来明确意图）
     }
 
 `backend-service` 是 Service Connect 注入前端任务的端点名，可在容器的 `/etc/hosts` 中查看，
