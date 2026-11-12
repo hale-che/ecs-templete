@@ -32,7 +32,6 @@ locals {
   log_group = { for k, v in local.name : k => "/ecs/${v}" }
 
   file_bucket_name     = coalesce(var.file_bucket_name, "${local.name_prefix}-files-${var.environment}")
-  codebase_bucket_name = coalesce(var.codebase_bucket_name, "${local.name_prefix}-s3-codebase-${var.environment}")
 
   ecr_arn = {
     for k, s in var.services :

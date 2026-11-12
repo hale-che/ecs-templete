@@ -44,7 +44,7 @@ AZ 运维人员的 Federated Role 只需交付 Policy，见 [运维权限交付�
     iam.tf          执行角色 + 任务角色
     logs.tf         日志组
     codebuild.tf    每服务一个构建项目 + webhook
-    s3.tf           应用文件桶（Intelligent-Tiering）+ 代码桶
+    s3.tf           应用文件桶，Intelligent-Tiering
     kms.tf          创建每环境 S3 / TLS Secret CMK、别名、轮换和项目隔离 Key Policy
     secrets.tf      TLS 证书的 Secret 容器（不含值）
     outputs.tf      按服务名索引
@@ -176,26 +176,6 @@ SSE-S3、SSE-C、其他密钥，以及只指定 `aws:kms` 而不指定 key ARN �
 
 降级没有副作用：这两层都是毫秒级读取、无取回费、无最短存储时长，对象被访问后自动回到 Frequent 层。
 所以 30 天和 60 天的差别只是前者更早开始省钱。
-
-## 代码桶
-
-一个环境一个，名字 `az-cn-rdit-<project>-s3-codebase-<environment>`，撞名用 `codebase_bucket_name` 显式指定。
-
-| 环境 | 桶名 |
-| --- | --- |
-| dev | `az-cn-rdit-aiec-s3-codebase-dev` |
-| ppd | `az-cn-rdit-aiec-s3-codebase-ppd` |
-| prd | `az-cn-rdit-aiec-s3-codebase-prd` |
-
-桶由 Terraform 创建，不走服务申请单。三个环境各 apply 一次，一次一个桶。
-
-安全基线和文件桶一致：阻断公网访问、SSE-KMS + Bucket Key、禁止加密降级的桶策略。当前没有 S3 日志目标桶，两个桶均不配置 S3 访问日志。
-**复用文件桶那把 S3 CMK（`aws_kms_key.files`），没有单独建密钥。**要独立密钥得在 `kms.tf` 再加一把。
-
-版本控制开启，分片上传 7 天清理。历史版本不配过期删除，要控成本再加 `noncurrent_version_expiration`。
-不转 Intelligent-Tiering —— 文件桶那条是需求明确要求的，代码桶没这个要求。
-
-谁来读写这个桶还没定：CodeBuild 角色和 ECS 任务角色目前都没有桶权限，也没有那把 CMK 的使用权限。
 
 ## 密钥
 

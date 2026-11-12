@@ -56,12 +56,6 @@ variable "file_bucket_name" {
   default     = null
 }
 
-variable "codebase_bucket_name" {
-  description = "代码桶名字，默认 az-cn-rdit-<project>-s3-codebase-<environment>。S3 桶名全局唯一，撞名才显式指定。"
-  type        = string
-  default     = null
-}
-
 variable "kms_administrator_arns" {
   description = "AZ 密钥管理员及执行 Terraform 的 IAM 角色 ARN；每环境必填，包含实际部署角色以通过 KMS 防锁定校验。"
   type        = list(string)

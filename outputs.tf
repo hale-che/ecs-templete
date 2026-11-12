@@ -50,11 +50,6 @@ output "file_bucket" {
   value       = aws_s3_bucket.files.bucket
 }
 
-output "codebase_bucket" {
-  description = "代码桶。和文件桶同一把 S3 CMK，不分层。"
-  value       = aws_s3_bucket.codebase.bucket
-}
-
 output "file_bucket_kms_key_arn" {
   description = "本环境创建的应用文件桶 CMK。"
   value       = aws_kms_key.files.arn
