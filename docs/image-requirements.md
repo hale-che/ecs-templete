@@ -31,7 +31,7 @@ awsvpc 网络模式下 ALB 访问任务 ENI 的 IP。只绑 `127.0.0.1` 的进�
 | 为什么不能在构建时打进去 | |
 | --- | --- |
 | 浏览器到不了后端 | 后端不挂任何 ALB，只在私有子网里被前端直连 |
-| 打进去就得一个环境一个镜像 | 和 DEV/PPD 共用 `latest` 的 tag 约定冲突 |
+| 打进去就得一个环境一个镜像 | 无法把同一已构建镜像按时间戳 tag / digest 晋级到其他环境 |
 
 后端地址从 `environment` 的 `BACKEND_URL` 读取。当前三个环境的两个前端均为
 `https://backend-service:8002`，通过 ECS Service Connect 访问后端，不经内部 ALB。
@@ -153,10 +153,14 @@ Terraform 只注入证书变量，不会替镜像生成这些文件或开启 Spr
 
 | 环境 | tag |
 | --- | --- |
-| DEV / PPD | `latest`，每次覆盖 |
-| PRD | 确定版本号，填进 `env/prd.tfvars` |
+| DEV / PPD / PRD 构建 | 构建时生成北京时间 `yyyyMMddHHmmss`，例如 `20261112153045` |
+| 各环境首次部署 | 将已推送的实际时间戳 tag 填入 `env/*.tfvars` 的 `services.*.tag` |
 
-**待确认**：ECR 仓库若开了 `IMMUTABLE` tag，`latest` 第二次 push 直接失败，DEV/PPD 这套就不成立，得改成每次新 tag。问 AZ。
+三个 buildspec 在 `pre_build` 执行 `export IMAGE_TAG="$(TZ=Asia/Shanghai date +%Y%m%d%H%M%S)"`，
+同一次构建的 build / push / 元数据记录复用该值。不要在 Terraform 中使用 `timestamp()`，否则 tag 会随 apply 改变而不是随构建改变。
+现有构建脚本继续记录源提交、构建 ID 和 digest，并保留 `sha-<commit>` 辅助标签。
+同仓库同一秒并发构建可能重名；IMMUTABLE 仓库重复推送相同 tag 会失败，发布流程应避免同仓库同秒并发，且辅助 SHA 标签的重复推送也受不可变规则约束。
+构建仍只推送镜像；独立发布流程需选取实际 tag / 已批准 digest 注册新 revision 并更新 ECS 服务。
 
 ## 9. 推送
 

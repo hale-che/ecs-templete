@@ -28,6 +28,7 @@ subnet_ids = [
   "subnet-0886d048a9ec36d81",
 ]
 
+# Initial ECS image: enter an existing yyyyMMddHHmmss tag (Asia/Shanghai). CodeBuild generates a new tag per build. | 初始 ECS 镜像填写已推送的北京时间戳 tag；CodeBuild 每次构建独立生成新 tag。
 services = {
   "frontend-ext" = {
     cpu           = 1024 # 1 vCPU | 1 个虚拟 CPU
@@ -36,7 +37,7 @@ services = {
     repo_url      = "https://github.com/AZU-RDIT/AIEC.git"
     buildspec     = "frontend-ext/buildspec.yml"
     branch        = "main"
-    tag           = "latest"
+    tag           = "REPLACE_ME_IMAGE_TAG"
     port          = 8443
     desired_count = 1
 
@@ -57,7 +58,7 @@ services = {
     repo_url      = "https://github.com/AZU-RDIT/AIEC.git"
     buildspec     = "frontend-int/buildspec.yml"
     branch        = "main"
-    tag           = "latest"
+    tag           = "REPLACE_ME_IMAGE_TAG"
     port          = 8443
     desired_count = 1
 
@@ -81,7 +82,7 @@ services = {
 
     # The backend reads and writes the application file bucket; task role permissions are generated automatically. | 后端读写应用文件桶，任务角色权限自动生成。
     file_bucket_access = true
-    tag                = "latest"
+    tag                = "REPLACE_ME_IMAGE_TAG"
     port               = 8002
     desired_count      = 1
 

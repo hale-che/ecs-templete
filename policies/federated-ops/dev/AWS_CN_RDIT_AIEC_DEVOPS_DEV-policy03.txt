@@ -1,0 +1,152 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ManageDevServiceRoles",
+            "Effect": "Allow",
+            "Action": [
+                "iam:CreateRole",
+                "iam:DeleteRole",
+                "iam:UpdateRole",
+                "iam:UpdateRoleDescription",
+                "iam:UpdateAssumeRolePolicy",
+                "iam:TagRole",
+                "iam:UntagRole",
+                "iam:GetRole",
+                "iam:PutRolePolicy",
+                "iam:DeleteRolePolicy",
+                "iam:GetRolePolicy",
+                "iam:ListRolePolicies",
+                "iam:ListAttachedRolePolicies",
+                "iam:ListInstanceProfilesForRole"
+            ],
+            "Resource": [
+                "arn:aws-cn:iam::332091793104:role/az-cn-rdit-aiec-*-dev"
+            ]
+        },
+        {
+            "Sid": "CreateRequiredServiceLinkedRoles",
+            "Effect": "Allow",
+            "Action": [
+                "iam:CreateServiceLinkedRole"
+            ],
+            "Resource": [
+                "arn:aws-cn:iam::332091793104:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS*",
+                "arn:aws-cn:iam::332091793104:role/aws-service-role/servicediscovery.amazonaws.com/AWSServiceRoleForAmazonRoute53AutoNaming*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "iam:AWSServiceName": [
+                        "ecs.amazonaws.com",
+                        "servicediscovery.amazonaws.com"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "CreateTaggedDevKeys",
+            "Effect": "Allow",
+            "Action": [
+                "kms:CreateKey"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:RequestedRegion": "cn-north-1",
+                    "aws:RequestTag/Project": "aiec",
+                    "aws:RequestTag/Environment": "dev"
+                }
+            }
+        },
+        {
+            "Sid": "TagNewDevKeys",
+            "Effect": "Allow",
+            "Action": [
+                "kms:TagResource"
+            ],
+            "Resource": [
+                "arn:aws-cn:kms:cn-north-1:332091793104:key/*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "aws:RequestedRegion": "cn-north-1",
+                    "aws:RequestTag/Project": "aiec",
+                    "aws:RequestTag/Environment": "dev"
+                },
+                "StringEqualsIfExists": {
+                    "aws:ResourceTag/Project": "aiec",
+                    "aws:ResourceTag/Environment": "dev"
+                }
+            }
+        },
+        {
+            "Sid": "ManageTaggedDevKeys",
+            "Effect": "Allow",
+            "Action": [
+                "kms:*"
+            ],
+            "Resource": [
+                "arn:aws-cn:kms:cn-north-1:332091793104:key/*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "aws:ResourceTag/Project": "aiec",
+                    "aws:ResourceTag/Environment": "dev"
+                }
+            }
+        },
+        {
+            "Sid": "ManageDevKeyAliases",
+            "Effect": "Allow",
+            "Action": [
+                "kms:CreateAlias",
+                "kms:UpdateAlias",
+                "kms:DeleteAlias"
+            ],
+            "Resource": [
+                "arn:aws-cn:kms:cn-north-1:332091793104:alias/az-cn-rdit-aiec-*-dev"
+            ]
+        },
+        {
+            "Sid": "CreateTaggedDevHttpNamespace",
+            "Effect": "Allow",
+            "Action": [
+                "servicediscovery:CreateHttpNamespace"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:RequestedRegion": "cn-north-1",
+                    "aws:RequestTag/Project": "aiec",
+                    "aws:RequestTag/Environment": "dev"
+                }
+            }
+        },
+        {
+            "Sid": "ManageTaggedDevDiscoveryResources",
+            "Effect": "Allow",
+            "Action": [
+                "servicediscovery:GetNamespace",
+                "servicediscovery:DeleteNamespace",
+                "servicediscovery:UpdateHttpNamespace",
+                "servicediscovery:GetService",
+                "servicediscovery:UpdateService",
+                "servicediscovery:DeleteService",
+                "servicediscovery:RegisterInstance",
+                "servicediscovery:DeregisterInstance",
+                "servicediscovery:GetInstance",
+                "servicediscovery:ListInstances"
+            ],
+            "Resource": [
+                "arn:aws-cn:servicediscovery:cn-north-1:332091793104:namespace/*",
+                "arn:aws-cn:servicediscovery:cn-north-1:332091793104:service/*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "aws:ResourceTag/Project": "aiec",
+                    "aws:ResourceTag/Environment": "dev"
+                }
+            }
+        }
+    ]
+}

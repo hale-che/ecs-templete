@@ -46,10 +46,8 @@ resource "aws_codebuild_project" "build" {
       value = "${local.ecr_registry}/${each.value.repository}"
     }
 
-    environment_variable {
-      name  = "IMAGE_TAG"
-      value = each.value.tag
-    }
+    # IMAGE_TAG is generated once by buildspec at build time (Asia/Shanghai, yyyyMMddHHmmss). | IMAGE_TAG 由 buildspec 在构建时生成一次，使用北京时间，精确到秒。
+    # services.*.tag pins the initial ECS image only; do not inject it into builds. | services.*.tag 只指定 ECS 初始镜像，不再注入构建环境。
 
     environment_variable {
       name  = "CLUSTER"

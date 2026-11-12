@@ -129,7 +129,7 @@
 | `project` | 项目标识，小写，2–17 字符 | plan 报错 |
 | `mandatory_tags` 七个字段 | 已填所提供的值；创建日期需填写实际值 | 空值会导致 plan 报错；非空占位值仍需人工替换 |
 | `services.*.repository` ×3 | 三个 ECR 仓库名 | plan 过，任务起不来 |
-| `services.*.tag` ×3 | **只有 PRD 要填**，DEV/PPD 是 `latest` | 同上 |
+| `services.*.tag` ×3 | 各环境首次部署引用的已推送时间戳 tag（北京时间 `yyyyMMddHHmmss`）；CodeBuild 自行生成构建 tag | 同上 |
 
 已填好不用动：`region`、`environment`、`cpu`、`memory`、`port`、`desired_count`、`log_retention_days`。
 
@@ -145,7 +145,8 @@ DEV 构建分支为 `dev`，PPD/PRD 为 `main`，均已显式写入环境文件�
 ## 权限需求
 
 **AZ 人员运维角色：** 项目组只提供 Policy JSON，AZ 负责 Federated Role、SSO、信任策略和关联。
-离线生成方法、两份策略的权限范围和交付示例见 [Federated Role 运维权限](federated-ops.md)。
+DEV 扩充交付在 `policies/federated-ops/dev/`，完整 DEV 运维关联三份；其他环境的标准策略仍为两份。
+权限范围、前提和标准策略离线生成方法见 [Federated Role 运维权限](federated-ops.md)。
 
 运行、构建和执行 Terraform 的权限见 `docs/iam-permissions.md`，服务角色对应实现在 `iam.tf`。
 
@@ -178,7 +179,7 @@ DEV 构建分支为 `dev`，PPD/PRD 为 `main`，均已显式写入环境文件�
 
 ## 待确认 —— 其他
 
-1. ECR 仓库的 tag 可变性：`MUTABLE` 还是 `IMMUTABLE`。`IMMUTABLE` 的话 DEV/PPD 用 `latest` 覆盖不成立
+1. ECR 仓库的 tag 可变性：主 tag 已改为秒级时间戳；同仓库同秒构建或重复推送辅助 `sha-<commit>` 标签时，需核对不可变规则
 2. IAM 命名 / path 约束，是否和 `az-cn-rdit-` 前缀冲突
 3. 是否强制 Permissions Boundary，ARN 是多少
 4. ALB 访问日志、WAF 规则集等基线要求（WAF 本身 SBP 已明确要有）

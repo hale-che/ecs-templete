@@ -1,0 +1,142 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ManageDevEcsResources",
+            "Effect": "Allow",
+            "Action": [
+                "ecs:*"
+            ],
+            "Resource": [
+                "arn:aws-cn:ecs:cn-north-1:332091793104:cluster/az-cn-rdit-aiec-ecs-fargate-dev",
+                "arn:aws-cn:ecs:cn-north-1:332091793104:service/az-cn-rdit-aiec-ecs-fargate-dev/*",
+                "arn:aws-cn:ecs:cn-north-1:332091793104:task/az-cn-rdit-aiec-ecs-fargate-dev/*",
+                "arn:aws-cn:ecs:cn-north-1:332091793104:task-set/az-cn-rdit-aiec-ecs-fargate-dev/*",
+                "arn:aws-cn:ecs:cn-north-1:332091793104:service-deployment/az-cn-rdit-aiec-ecs-fargate-dev/*",
+                "arn:aws-cn:ecs:cn-north-1:332091793104:service-revision/az-cn-rdit-aiec-ecs-fargate-dev/*",
+                "arn:aws-cn:ecs:cn-north-1:332091793104:task-definition/az-cn-rdit-aiec-*-dev:*"
+            ],
+            "Condition": {
+                "ArnEqualsIfExists": {
+                    "ecs:cluster": "arn:aws-cn:ecs:cn-north-1:332091793104:cluster/az-cn-rdit-aiec-ecs-fargate-dev"
+                }
+            }
+        },
+        {
+            "Sid": "EcrLogin",
+            "Effect": "Allow",
+            "Action": [
+                "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:RequestedRegion": "cn-north-1"
+                }
+            }
+        },
+        {
+            "Sid": "ManageDevRepositories",
+            "Effect": "Allow",
+            "Action": [
+                "ecr:*"
+            ],
+            "Resource": [
+                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/REPLACE_ME_ECR_BACKEND",
+                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/REPLACE_ME_ECR_FRONTEND_EXT",
+                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/REPLACE_ME_ECR_FRONTEND_INT"
+            ]
+        },
+        {
+            "Sid": "ManageDevBuilds",
+            "Effect": "Allow",
+            "Action": [
+                "codebuild:*"
+            ],
+            "Resource": [
+                "arn:aws-cn:codebuild:cn-north-1:332091793104:project/az-cn-rdit-aiec-*-build-dev",
+                "arn:aws-cn:codebuild:cn-north-1:332091793104:build/az-cn-rdit-aiec-*-build-dev:*",
+                "arn:aws-cn:codebuild:cn-north-1:332091793104:report-group/az-cn-rdit-aiec-*-dev",
+                "arn:aws-cn:codebuild:cn-north-1:332091793104:report/az-cn-rdit-aiec-*-dev:*"
+            ]
+        },
+        {
+            "Sid": "ManageDevBucketsAndObjects",
+            "Effect": "Allow",
+            "Action": [
+                "s3:*"
+            ],
+            "Resource": [
+                "arn:aws-cn:s3:::az-cn-rdit-aiec-files-dev",
+                "arn:aws-cn:s3:::az-cn-rdit-aiec-files-dev/*",
+                "arn:aws-cn:s3:::az-cn-rdit-aiec-s3-codebase-dev",
+                "arn:aws-cn:s3:::az-cn-rdit-aiec-s3-codebase-dev/*"
+            ]
+        },
+        {
+            "Sid": "ManageDevLogs",
+            "Effect": "Allow",
+            "Action": [
+                "logs:*"
+            ],
+            "Resource": [
+                "arn:aws-cn:logs:cn-north-1:332091793104:log-group:/ecs/az-cn-rdit-aiec-*-dev",
+                "arn:aws-cn:logs:cn-north-1:332091793104:log-group:/ecs/az-cn-rdit-aiec-*-dev:*",
+                "arn:aws-cn:logs:cn-north-1:332091793104:log-group:/aws/codebuild/az-cn-rdit-aiec-*-build-dev",
+                "arn:aws-cn:logs:cn-north-1:332091793104:log-group:/aws/codebuild/az-cn-rdit-aiec-*-build-dev:*"
+            ]
+        },
+        {
+            "Sid": "ManageDevSecrets",
+            "Effect": "Allow",
+            "Action": [
+                "secretsmanager:*"
+            ],
+            "Resource": [
+                "arn:aws-cn:secretsmanager:cn-north-1:332091793104:secret:az-cn-rdit-aiec-*-dev-??????"
+            ]
+        },
+        {
+            "Sid": "ManageDevMonitoring",
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:*"
+            ],
+            "Resource": [
+                "arn:aws-cn:cloudwatch:cn-north-1:332091793104:alarm:az-cn-rdit-aiec-*-dev",
+                "arn:aws-cn:cloudwatch::332091793104:dashboard/az-cn-rdit-aiec-*-dev"
+            ]
+        },
+        {
+            "Sid": "PassDevEcsRoles",
+            "Effect": "Allow",
+            "Action": [
+                "iam:PassRole"
+            ],
+            "Resource": [
+                "arn:aws-cn:iam::332091793104:role/az-cn-rdit-aiec-*-ecs-execution-role-dev",
+                "arn:aws-cn:iam::332091793104:role/az-cn-rdit-aiec-*-ecs-task-role-dev"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "iam:PassedToService": "ecs-tasks.amazonaws.com"
+                }
+            }
+        },
+        {
+            "Sid": "PassDevBuildRoles",
+            "Effect": "Allow",
+            "Action": [
+                "iam:PassRole"
+            ],
+            "Resource": [
+                "arn:aws-cn:iam::332091793104:role/az-cn-rdit-aiec-*-build-role-dev"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "iam:PassedToService": "codebuild.amazonaws.com"
+                }
+            }
+        }
+    ]
+}

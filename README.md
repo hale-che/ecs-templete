@@ -16,7 +16,7 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | `project` | 项目标识，小写，2–17 字符 |
 | `mandatory_tags` | AZ 要求的七个标签；已填所提供的值，创建日期需填写实际值 |
 | `repository` ×3 | 三个 ECR 仓库名 |
-| `tag` ×3 | 只有 PRD 要填，DEV/PPD 是 `latest` |
+| `tag` ×3 | 各环境首次部署使用的已推送时间戳 tag，例如 `20261112153045`；不控制 CodeBuild 构建 tag |
 | `subnet_ids` | AZ 给的私有子网，≥2 个 |
 | `security_group_ids` ×3 | AZ 给的安全组 |
 | `target_group_arn` ×2 | AZ 给的目标组，只有两个前端 |
@@ -29,7 +29,8 @@ S3 和 TLS Secret 分别使用本项目创建的 CMK，自动开启轮换。外�
 开发打镜像看 `docs/image-requirements.md`。
 
 AZ 运维人员的 Federated Role 只需交付 Policy，见 [运维权限交付说明](docs/federated-ops.md)。
-`policies/federated-ops/` 可离线生成只读及运维操作两份 JSON；`federated-ops.tf` 同时提供主项目 outputs。
+`policies/federated-ops/dev/` 存放扩充后的三份 DEV 运维策略。
+上级纯生成模块可离线生成标准只读及有限运维两份 JSON；`federated-ops.tf` 提供对应的标准 outputs，不生成 DEV 扩充文件。
 角色、SSO 和策略关联由 AZ 管理，本模板不创建人员角色。
 
 ## 结构
@@ -98,13 +99,16 @@ IAM 权限清单见 `docs/iam-permissions.md`。
          --secret-string "$(jq -n --arg cert "$(base64 -w0 tls.crt)" \
                                  --arg key  "$(base64 -w0 tls.key)" '{cert:$cert,key:$key}')"
 
-3. 触发 CodeBuild 构建推镜像，tag 和 tfvars 里的一致
+3. 触发 CodeBuild 构建推镜像，将实际生成的时间戳 tag 填入 tfvars，再创建/启动 ECS 服务
 4. `aws ecs update-service --force-new-deployment`，任务起来
 
 第 2、3 步漏了的表现分别是 `ResourceInitializationError`（取不到密钥）和
 `CannotPullContainerError`（拉不到镜像），都只在任务启动时暴露，plan 和 apply 都不报。
 
 ### 之后发版
+
+当前统一使用北京时间 `yyyyMMddHHmmss` 的构建时间戳 tag。发布使用下面的方案 B，
+或按构建记录中的已批准 digest 注册新 revision；方案 A 的同 tag 覆盖不适用于当前约定。
 
 | | A 覆盖同 tag | B 注册新 revision |
 | --- | --- | --- |
@@ -225,7 +229,7 @@ DEV 已配置为同一个 `https://github.com/AZU-RDIT/AIEC.git` 仓库，分别
 | 后端 `backend` | `backend/buildspec.yml` |
 
 以上目录及文件需要在应用仓库对应分支中存在：DEV 使用 `dev`，PPD / PRD 使用 `main`。
-三个环境已使用同一个 AZ 仓库及上述 buildspec 路径；ECR 仓库名和生产 tag 仍需填写。
+三个环境已使用同一个 AZ 仓库及上述 buildspec 路径；ECR 仓库名及首次部署镜像 tag 仍需填写。
 `frontend-ext` / `frontend-int` 仅存构建入口，两者都使用仓库根目录的 `frontend` 共享源码。
 `backend` 存后端源码和构建入口。交付布局及运行变量见应用交付包 `doc/container-images.md`。
 `buildspec` 文件放在子目录不会自动切换构建工作目录，构建命令须明确指定目录或先 `cd`。
@@ -234,6 +238,9 @@ DEV 已配置为同一个 `https://github.com/AZU-RDIT/AIEC.git` 仓库，分别
 ```yaml
 version: 0.2
 phases:
+  pre_build:
+    commands:
+      - export IMAGE_TAG="$(TZ=Asia/Shanghai date +%Y%m%d%H%M%S)"
   build:
     commands:
       - docker build -f backend/Dockerfile -t "$ECR_REPO:$IMAGE_TAG" backend
@@ -247,7 +254,7 @@ phases:
 | 环境变量 | 内容 |
 | --- | --- |
 | `ECR_REPO` | 完整镜像地址，不含 tag |
-| `IMAGE_TAG` | tfvars 里的 `tag`。方案 B 可改用 CodeBuild 自带的 `CODEBUILD_RESOLVED_SOURCE_VERSION`（git sha） |
+| `IMAGE_TAG` | 由 buildspec 在 `pre_build` 生成一次，北京时间 `yyyyMMddHHmmss`；构建、推送及记录复用同一个值，Terraform 不再注入固定值 |
 | `CLUSTER` / `SERVICE` | 部署目标 |
 | `TASK_FAMILY` | 方案 B 注册新 revision 用 |
 

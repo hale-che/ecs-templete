@@ -96,7 +96,8 @@ variable "services" {
 
     # ECR repository name; derive the image URI and execution role pull permissions from this value. | ECR 仓库名。镜像地址和执行角色的拉取权限都从这里推。
     repository = string
-    tag        = string
+    # Existing timestamp tag for the initial ECS task; CodeBuild generates its own tag per build. | ECS 初始任务引用的已存在时间戳 tag；CodeBuild 每次构建另行生成 tag。
+    tag = string
 
     # GitHub source repository URL for CodeBuild; services in one repository use the same URL. | GitHub 仓库地址，CodeBuild 的源。同仓库的服务填相同 URL。
     repo_url = string

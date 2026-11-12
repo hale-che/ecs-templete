@@ -28,7 +28,8 @@ subnet_ids = [
   "subnet-0886d048a9ec36d81",
 ]
 
-# Use a fixed production image tag instead of latest. Run exactly two tasks per service without Auto Scaling. | 生产的 tag 填确定版本，不要 latest。三个服务固定各 2 个任务，不启用自动扩缩容。
+# Run exactly two tasks per service without Auto Scaling. | 三个服务固定各 2 个任务，不启用自动扩缩容。
+# Initial ECS image: enter an existing yyyyMMddHHmmss tag (Asia/Shanghai). CodeBuild generates a new tag per build. | 初始 ECS 镜像填写已推送的北京时间戳 tag；CodeBuild 每次构建独立生成新 tag。
 services = {
   "frontend-ext" = {
     cpu           = 1024 # 1 vCPU per task, with 2 tasks | 1 vCPU × 2 个任务
@@ -37,7 +38,7 @@ services = {
     repo_url      = "https://github.com/AZU-RDIT/AIEC.git"
     buildspec     = "frontend-ext/buildspec.yml"
     branch        = "main"
-    tag           = "REPLACE_ME"
+    tag           = "REPLACE_ME_IMAGE_TAG"
     port          = 8443
     desired_count = 2
 
@@ -58,7 +59,7 @@ services = {
     repo_url      = "https://github.com/AZU-RDIT/AIEC.git"
     buildspec     = "frontend-int/buildspec.yml"
     branch        = "main"
-    tag           = "REPLACE_ME"
+    tag           = "REPLACE_ME_IMAGE_TAG"
     port          = 8443
     desired_count = 2
 
@@ -82,7 +83,7 @@ services = {
 
     # The backend reads and writes the application file bucket; task role permissions are generated automatically. | 后端读写应用文件桶，任务角色权限自动生成。
     file_bucket_access = true
-    tag                = "REPLACE_ME"
+    tag                = "REPLACE_ME_IMAGE_TAG"
     port               = 8002
     desired_count      = 2
 

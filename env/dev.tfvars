@@ -33,6 +33,7 @@ subnet_ids = [
 # AZ creates and supplies security_group_ids and target_group_arn. | security_group_ids 和 target_group_arn 都是 AZ 创建后给的。
 # All three services share one Git repository; buildspec paths are relative to the repository root. | 三个服务使用同一 Git 仓库，buildspec 路径相对于仓库根目录。
 # repository is the service's ECR image repository name, not a Git repository or source directory. | repository 是各自的 ECR 镜像仓库名，不是 Git 仓库或源码目录。
+# Initial ECS image: enter an existing yyyyMMddHHmmss tag (Asia/Shanghai). CodeBuild generates a new tag per build. | 初始 ECS 镜像填写已推送的北京时间戳 tag；CodeBuild 每次构建独立生成新 tag。
 services = {
   "frontend-ext" = {
     cpu           = 512 # 0.5 vCPU | 0.5 个虚拟 CPU
@@ -41,7 +42,7 @@ services = {
     repo_url      = "https://github.com/AZU-RDIT/AIEC.git"
     buildspec     = "frontend-ext/buildspec.yml" # External frontend | 外网前端
     branch        = "dev"
-    tag           = "latest"
+    tag           = "REPLACE_ME_IMAGE_TAG"
     port          = 8443
     desired_count = 1
 
@@ -62,7 +63,7 @@ services = {
     repo_url      = "https://github.com/AZU-RDIT/AIEC.git"
     buildspec     = "frontend-int/buildspec.yml" # Internal frontend | 内网前端
     branch        = "dev"
-    tag           = "latest"
+    tag           = "REPLACE_ME_IMAGE_TAG"
     port          = 8443
     desired_count = 1
 
@@ -86,7 +87,7 @@ services = {
     # The backend reads and writes the application file bucket; task role permissions are generated automatically. | 后端读写应用文件桶，任务角色权限自动生成。
     file_bucket_access = true
     branch             = "dev"
-    tag                = "latest"
+    tag                = "REPLACE_ME_IMAGE_TAG"
     port               = 8002
     desired_count      = 1
 
