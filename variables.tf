@@ -45,15 +45,68 @@ variable "mandatory_tags" {
 }
 
 variable "log_retention_days" {
-  description = "日志保留天数。"
+  description = "日志保留天数，默认 1 年。只能取 CloudWatch 允许的档位。"
   type        = number
-  default     = 30
+  default     = 365
+
+  validation {
+    condition = contains([
+      1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731,
+      1096, 1827, 2192, 2557, 2922, 3288, 3653,
+    ], var.log_retention_days)
+    error_message = "log_retention_days 只能取 CloudWatch 允许的档位：1/3/5/7/14/30/60/90/120/150/180/365/400/545/731/1096/1827/2192/2557/2922/3288/3653。"
+  }
 }
 
 variable "file_bucket_name" {
   description = "应用文件桶名字，默认 az-cn-rdit-<project>-files-<environment>。S3 桶名全局唯一，撞名才显式指定。"
   type        = string
   default     = null
+}
+
+variable "tls_secret_arn" {
+  description = <<-EOT
+    TLS 证书的 Secret 完整 ARN，外部已建好，本模板不创建也不写值。
+    里面要有 cert 和 key 两个 JSON 键，自动注入三个服务的 TLS_CERT / TLS_KEY。
+  EOT
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+-[A-Za-z0-9]{6}$", var.tls_secret_arn))
+    error_message = "tls_secret_arn 必须是完整 ARN，结尾带 Secrets Manager 自动生成的 6 位后缀。"
+  }
+}
+
+variable "codebuild_image" {
+  description = <<-EOT
+    CodeBuild 构建镜像。默认是 Amazon Linux 2023 的托管镜像；
+    带 amazonlinux2 的那套基于已停止支持的 AL2，不要再用。
+  EOT
+  type        = string
+  default     = "aws/codebuild/amazonlinux-x86_64-standard:5.0"
+}
+
+variable "ecr_image_tag_mutability" {
+  description = "ECR tag 可变性。时间戳 tag 唯一，可以改 IMMUTABLE；若另外推 latest 这类移动 tag 则必须 MUTABLE。"
+  type        = string
+  default     = "MUTABLE"
+
+  validation {
+    condition     = contains(["MUTABLE", "IMMUTABLE"], var.ecr_image_tag_mutability)
+    error_message = "ecr_image_tag_mutability 只能是 MUTABLE 或 IMMUTABLE。"
+  }
+}
+
+variable "ecr_untagged_expire_days" {
+  description = "未打 tag 的镜像保留天数。覆盖推送同一个 tag 会把旧镜像变成 untagged。"
+  type        = number
+  default     = 30
+}
+
+variable "ecr_max_image_count" {
+  description = "每个仓库保留的镜像数。tag 唯一（时间戳 + commit）时镜像只增不减，靠这条收口。"
+  type        = number
+  default     = 30
 }
 
 variable "kms_administrator_arns" {
@@ -66,15 +119,12 @@ variable "kms_administrator_arns" {
     ])
     error_message = "kms_administrator_arns 至少提供一个完整 IAM role ARN，不能填 STS 会话 ARN 或通配符。"
   }
-}
 
-variable "enable_build_webhook" {
-  description = <<-EOT
-    GitHub push 自动触发构建。生产默认关闭 —— 推一次代码就发一次生产不是好主意。
-    开启前账号里要先有 GitHub 凭证，见 README。
-  EOT
-  type        = bool
-  default     = false
+  # REPLACE_ME 是合法角色名字符，上面那条拦不住；漏填要到建 key 时才报错。 | REPLACE_ME consists of valid role-name characters, so the rule above accepts it and the failure surfaces only when the key is created.
+  validation {
+    condition     = !can(regex("REPLACE_ME", join(",", var.kms_administrator_arns)))
+    error_message = "kms_administrator_arns 里还有 REPLACE_ME 没替换成实际角色名。"
+  }
 }
 
 variable "subnet_ids" {
@@ -96,6 +146,7 @@ variable "services" {
 
     # ECR repository name; derive the image URI and execution role pull permissions from this value. | ECR 仓库名。镜像地址和执行角色的拉取权限都从这里推。
     repository = string
+
     # Existing timestamp tag for the initial ECS task; CodeBuild generates its own tag per build. | ECS 初始任务引用的已存在时间戳 tag；CodeBuild 每次构建另行生成 tag。
     tag = string
 
@@ -174,14 +225,41 @@ variable "services" {
     error_message = "服务名只能用小写字母、数字和连字符，不超过 31 位。"
   }
 
+  # Target group ARNs are not validated anywhere else; a wrong value fails only when the ECS service is created. | 目标组 ARN 别处没有校验，填错要到建 ECS 服务时才报。
+  validation {
+    condition = alltrue([
+      for s in values(var.services) :
+      s.target_group_arn == null ||
+      can(regex("^arn:aws[a-z-]*:elasticloadbalancing:[a-z0-9-]+:[0-9]{12}:targetgroup/[A-Za-z0-9-]{1,32}/[0-9a-f]{16}$", coalesce(s.target_group_arn, "")))
+    ])
+    error_message = "target_group_arn 必须是完整的目标组 ARN，形如 arn:aws-cn:elasticloadbalancing:cn-north-1:<12位账号>:targetgroup/<名字>/<16位十六进制>。"
+  }
+
+  # Catch any leftover placeholder in one shot: repository, tag, security groups, secrets. | 一次兜住所有残留占位符：仓库名、tag、安全组、密钥。
+  validation {
+    condition     = alltrue([for s in values(var.services) : !can(regex("REPLACE_ME", jsonencode(s)))])
+    error_message = "services 里还有 REPLACE_ME 没替换。"
+  }
+
+  # ECR repository names reject uppercase; the module now creates these repositories. | ECR 仓库名不收大写，仓库由本模板创建。
+  validation {
+    condition = alltrue([
+      for s in values(var.services) :
+      can(regex("^([a-z0-9]+([._-][a-z0-9]+)*/)*[a-z0-9]+([._-][a-z0-9]+)*$", s.repository))
+    ])
+    error_message = "repository 只能用小写字母、数字和 . _ - / ，ECR 仓库名不收大写。"
+  }
+
   # Only Secrets Manager is supported; other ARN formats can cause an index error when deriving execution role permissions. | 只支持 Secrets Manager。放别的 ARN 进来，推导执行角色权限那段会按段数截取而越界报错。
+  # Require the six-character suffix: a name-only ARN passes plan but fails at task startup. | 必须带 6 位后缀：只写名字的 ARN 能过 plan，但任务启动时才失败。
   validation {
     condition = alltrue(flatten([
       for s in values(var.services) : [
-        for a in values(s.secrets) : can(regex("^arn:aws[a-z-]*:secretsmanager:", a))
+        for a in values(s.secrets) :
+        can(regex("^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+-[A-Za-z0-9]{6}(:[^:]*:[^:]*:[^:]*)?$", a))
       ]
     ]))
-    error_message = "secrets 的值必须是 Secrets Manager 的完整 ARN。用 SSM Parameter Store 要先改 iam.tf。"
+    error_message = "secrets 的值必须是完整 Secret ARN（结尾带 6 位随机后缀），可再接 :键名:: 取 JSON 里的某个键。"
   }
 
   validation {

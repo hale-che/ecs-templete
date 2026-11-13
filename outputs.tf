@@ -40,6 +40,11 @@ output "image_urls" {
   value       = { for k, s in var.services : k => "${local.ecr_registry}/${s.repository}:${s.tag}" }
 }
 
+output "ecr_repository_urls" {
+  description = "本模板创建的 ECR 仓库地址，按服务名索引。"
+  value       = { for k, s in var.services : k => aws_ecr_repository.this[s.repository].repository_url }
+}
+
 output "codebuild_projects" {
   description = "CodeBuild 项目名。手工触发：aws codebuild start-build --project-name <名字>。"
   value       = { for k, v in aws_codebuild_project.build : k => v.name }
@@ -55,12 +60,12 @@ output "file_bucket_kms_key_arn" {
   value       = aws_kms_key.files.arn
 }
 
-output "tls_kms_key_arn" {
-  description = "本环境创建的 TLS Secret CMK。"
-  value       = aws_kms_key.secrets.arn
+output "logs_kms_key_arn" {
+  description = "本环境创建的 CloudWatch Logs CMK，ECS 和 CodeBuild 日志组共用。"
+  value       = aws_kms_key.logs.arn
 }
 
 output "tls_secret_arn" {
-  description = "TLS 证书的 Secret。Terraform 只建容器，值要手工填，见 README。"
-  value       = aws_secretsmanager_secret.tls.arn
+  description = "TLS 证书的 Secret ARN，外部已建好，本模板只引用。"
+  value       = var.tls_secret_arn
 }

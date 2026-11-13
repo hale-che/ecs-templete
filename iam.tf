@@ -331,10 +331,11 @@ data "aws_iam_policy_document" "codebuild" {
       values   = [var.project]
     }
 
+    # 用 AZ 强制标签里的 environment，键名和大小写都以 mandatory_tags 为准。
     condition {
       test     = "StringEquals"
-      variable = "aws:RequestTag/Environment"
-      values   = [var.environment]
+      variable = "aws:RequestTag/environment"
+      values   = [var.mandatory_tags["environment"]]
     }
   }
 

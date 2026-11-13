@@ -33,7 +33,7 @@ DEV 扩充文件独立维护，上级标准生成模块和 `export.py` 不会生
 
 ## 标准策略生成模块
 
-`policies/federated-ops/main.tf`、`export.py` 和根模块 `federated-ops.tf` 的两个 outputs
+`policies/federated-ops/main.tf` 和 `export.py`
 继续提供标准的只读 / 有限运维策略，适用于继续使用原授权范围的环境。
 标准只读策略包含 ECS、项目日志、镜像元数据、构建结果及指标查询；标准操作策略只允许
 更新现有服务、切换本服务已有 revision、传递六个 ECS 角色，以及触发/停止现有 CodeBuild 构建。
@@ -69,18 +69,6 @@ python3 policies/federated-ops/export.py \
 
 脚本在临时目录运行本地 init / plan / show，检查无资源变更并检查策略大小，不执行 apply。
 输出 `federated-ops-readonly.json` 和 `federated-ops-operations.json`。
-
-### 根项目标准输出
-
-`federated-ops.tf` 从根项目获取实际账号、环境和仓库输入。
-按既有流程部署且 state 中已有对应 outputs 后，可导出标准策略：
-
-```bash
-terraform output -raw federated_ops_readonly_policy_json > federated-ops-readonly.json
-terraform output -raw federated_ops_operations_policy_json > federated-ops-operations.json
-```
-
-只为生成标准 Policy 无需运行根项目 apply，优先使用独立模块。
 
 ## 验证
 

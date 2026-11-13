@@ -162,6 +162,8 @@ Terraform 只注入证书变量，不会替镜像生成这些文件或开启 Spr
 同仓库同一秒并发构建可能重名；IMMUTABLE 仓库重复推送相同 tag 会失败，发布流程应避免同仓库同秒并发，且辅助 SHA 标签的重复推送也受不可变规则约束。
 构建仍只推送镜像；独立发布流程需选取实际 tag / 已批准 digest 注册新 revision 并更新 ECS 服务。
 
+生命周期清理：untagged 镜像 30 天后删除，每个仓库最多保留 30 个镜像（`ecr_untagged_expire_days` / `ecr_max_image_count`）。
+
 ## 9. 推送
 
 仓库地址结尾是 `.amazonaws.com.cn`，不是 `.amazonaws.com`。确切地址用 `terraform output image_urls`。

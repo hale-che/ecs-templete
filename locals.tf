@@ -21,17 +21,15 @@ locals {
   build_role_name     = { for k in keys(var.services) : k => "${local.name_prefix}-${k}-build-role-${var.environment}" }
   build_name          = { for k in keys(var.services) : k => "${local.name_prefix}-${k}-build-${var.environment}" }
   build_project_arn   = { for k, name in local.build_name : k => "arn:${local.partition}:codebuild:${var.region}:${local.account_id}:project/${name}" }
-  tls_secret_name     = "${local.name_prefix}-tls-${var.environment}"
 
   tags = merge(var.mandatory_tags, {
-    Environment = var.environment
-    Project     = var.project
-    ManagedBy   = "terraform"
+    Project   = var.project
+    ManagedBy = "terraform"
   })
 
   log_group = { for k, v in local.name : k => "/ecs/${v}" }
 
-  file_bucket_name     = coalesce(var.file_bucket_name, "${local.name_prefix}-files-${var.environment}")
+  file_bucket_name = coalesce(var.file_bucket_name, "${local.name_prefix}-files-${var.environment}")
 
   ecr_arn = {
     for k, s in var.services :
@@ -53,13 +51,13 @@ locals {
     k => "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:${v}:log-stream:*"
   }
 
-  # Terraform creates the TLS certificate ARN, so merge it into each service here rather than in tfvars. | TLS 证书的 ARN 由 Terraform 产生，没法写进 tfvars，所以在这里合进每个服务。
-  # Only put AZ-supplied secrets, such as the RDS password, in tfvars; tfvars takes precedence when names conflict. | tfvars 的 secrets 只放 AZ 给的（RDS 密码之类），同名时以 tfvars 为准。
+  # The TLS secret is shared by all three services, so merge it here instead of repeating it per service. | TLS 密钥三个服务共用，在这里统一合进去，不用每个服务重复填。
+  # Service-specific secrets go in the tfvars secrets map; tfvars takes precedence when names conflict. | 服务各自的密钥填 tfvars 的 secrets，同名时以 tfvars 为准。
   secrets_effective = {
     for k, s in var.services : k => merge(
       {
-        TLS_CERT = "${aws_secretsmanager_secret.tls.arn}:cert::"
-        TLS_KEY  = "${aws_secretsmanager_secret.tls.arn}:key::"
+        TLS_CERT = "${var.tls_secret_arn}:cert::"
+        TLS_KEY  = "${var.tls_secret_arn}:key::"
       },
       s.secrets,
     )

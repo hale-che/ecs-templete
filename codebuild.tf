@@ -7,6 +7,7 @@ resource "aws_cloudwatch_log_group" "build" {
   # Create the log group explicitly because groups created by CodeBuild never expire. | 自己建而不是让 CodeBuild 建：它建出来的日志组永不过期。
   name              = "/aws/codebuild/${local.build_name[each.key]}"
   retention_in_days = var.log_retention_days
+  kms_key_id        = aws_kms_key.logs.arn
 
   tags = { Name = "/aws/codebuild/${local.build_name[each.key]}" }
 }
@@ -34,7 +35,7 @@ resource "aws_codebuild_project" "build" {
 
   environment {
     compute_type = each.value.build_compute_type
-    image        = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    image        = var.codebuild_image
     type         = "LINUX_CONTAINER"
 
     # docker build requires a Docker daemon; builds fail without it. | docker build 要 Docker daemon，少了这个构建直接失败。
@@ -72,24 +73,4 @@ resource "aws_codebuild_project" "build" {
   }
 
   tags = { Name = local.build_name[each.key] }
-}
-
-# Trigger automatically on push; disabled by default in production. | push 自动触发。生产默认关闭。
-resource "aws_codebuild_webhook" "build" {
-  for_each = { for k, v in var.services : k => v if var.enable_build_webhook }
-
-  project_name = aws_codebuild_project.build[each.key].name
-  build_type   = "BUILD"
-
-  filter_group {
-    filter {
-      type    = "EVENT"
-      pattern = "PUSH"
-    }
-
-    filter {
-      type    = "HEAD_REF"
-      pattern = "^refs/heads/${each.value.branch}$"
-    }
-  }
 }

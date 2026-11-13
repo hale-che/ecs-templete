@@ -126,7 +126,7 @@ KMS 资源只包含本项目创建的文件桶 CMK，条件限制为本区域 S3
 | --- | --- | --- |
 | A 固定 tag + 强制重部署 | `ecs:UpdateService` `ecs:DescribeServices` | 服务 ARN |
 | B 注册新 revision | A 的两条，加 `ecs:DescribeTaskDefinition` | `*`，限制区域；该只读 API 不支持 family ARN 限定 |
-| B 注册新 revision | `ecs:RegisterTaskDefinition`、创建时的 `ecs:TagResource` | 本服务 family ARN；注册要求 Project / Environment 请求标签 |
+| B 注册新 revision | `ecs:RegisterTaskDefinition`、创建时的 `ecs:TagResource` | 本服务 family ARN；注册要求 `Project` / `environment` 请求标签 |
 | B 注册新 revision | 再加 `iam:PassRole` | 六个 ECS 角色，条件 `iam:PassedToService = ecs-tasks.amazonaws.com` |
 
 **方案 A 权限明显更小，而且不需要 `PassRole`。** 前提是 ECR 仓库允许 `MUTABLE` tag。
@@ -140,17 +140,17 @@ KMS 资源只包含本项目创建的文件桶 CMK，条件限制为本区域 S3
 | `iam:CreateRole` `iam:DeleteRole` `iam:GetRole` `iam:UpdateRole` `iam:UpdateAssumeRolePolicy` `iam:TagRole` `iam:UntagRole` `iam:ListInstanceProfilesForRole` | `role/az-cn-rdit-<project>-*-<environment>` | 建本项目服务角色，按项目及环境限定 |
 | `iam:PutRolePolicy` `iam:DeleteRolePolicy` `iam:GetRolePolicy` `iam:ListRolePolicies` `iam:ListAttachedRolePolicies` | `role/az-cn-rdit-<project>-*-<environment>` | 角色的内联策略 |
 | `iam:PassRole` | 本环境逐个执行 / 任务角色 ARN | 注册 Task Definition 时把角色传给 ECS |
-| `ecs:RegisterTaskDefinition` `ecs:TagResource` | 本服务的 Task Definition family ARN | 注册新 revision，保留 Project / Environment 和强制标签 |
+| `ecs:RegisterTaskDefinition` `ecs:TagResource` | 本服务的 Task Definition family ARN | 注册新 revision，保留 `Project` / `environment` 和强制标签 |
 | `ecs:DeregisterTaskDefinition` `ecs:DescribeTaskDefinition` `ecs:ListTaskDefinitions` | `*`，按支持的条件限制区域 | 这些 API 需与支持 family 限定的注册操作分开授权 |
 | `ecs:CreateCluster` `ecs:DeleteCluster` `ecs:DescribeClusters` `ecs:UpdateClusterSettings` | 集群 ARN | 建集群、开 Container Insights |
 | `ecs:CreateService` `ecs:DeleteService` `ecs:UpdateService` `ecs:DescribeServices` | 服务 ARN | 建三个服务 |
 | `iam:CreateServiceLinkedRole` | 条件 `iam:AWSServiceName` 限定 `ecs.amazonaws.com` | ECS 服务关联角色，账号里已有就不会调 |
 | `elasticloadbalancing:DescribeTargetGroups` `DescribeLoadBalancers` | 目标组 / ALB ARN | 服务关联目标组时可能需要，不确定则先给 |
 | `logs:CreateLogGroup` `logs:DeleteLogGroup` `logs:DescribeLogGroups` `logs:PutRetentionPolicy` `logs:TagResource` `logs:ListTagsForResource` | `log-group:/ecs/*` | 建日志组 |
+| `ecr:CreateRepository` `ecr:DeleteRepository` `ecr:DescribeRepositories` `ecr:TagResource` `ecr:UntagResource` `ecr:ListTagsForResource` `ecr:PutImageTagMutability` `ecr:PutImageScanningConfiguration` `ecr:GetLifecyclePolicy` `ecr:PutLifecyclePolicy` `ecr:DeleteLifecyclePolicy` | 三个 ECR 仓库 ARN（创建时 `*`） | 本模板现在创建 ECR 仓库并配 tag 可变性、扫描和 untagged 清理 |
 | `sts:GetCallerIdentity` | `*` | 取账号 ID 拼 ARN，无资源概念 |
-| `kms:CreateKey`、key / alias 的读取、策略、标签、轮换和生命周期操作 | 创建时 `*` 配合 Project / Environment 请求标签；后续限定本环境 CMK / alias | 本模板现在创建两把 CMK；实际部署角色必须列入 `kms_administrator_arns`，见 `kms.md` |
+| `kms:CreateKey`、key / alias 的读取、策略、标签、轮换和生命周期操作 | 创建时 `*` 配合 `Project` / `environment` 请求标签；后续限定本环境 CMK / alias | 本模板现在创建两把 CMK（S3 / Logs）；实际部署角色必须列入 `kms_administrator_arns`，见 `kms.md` |
 | `s3:PutEncryptionConfiguration` `s3:GetEncryptionConfiguration` `s3:PutBucketPolicy` `s3:GetBucketPolicy` `s3:DeleteBucketPolicy` | 应用文件桶 ARN | 管理 SSE-KMS 默认加密及禁止加密降级的桶策略；此外仍需原有建桶、版本控制和生命周期权限 |
-| `kms:DescribeKey` `kms:GenerateDataKey` `kms:Decrypt`（TLS Secret） | 本项目 TLS Secret CMK | Secrets Manager 创建或更新加密配置时需要；手工填值的身份同样需要对应权限 |
 | `s3:ListBucket` | state bucket | **不能漏。** 缺了 S3 对不存在的 key 返回 403 而不是 404，`terraform init` 报的错指向完全不相干的地方 |
 | `s3:GetObject` `s3:PutObject` `s3:DeleteObject` | state key | 读写 state |
 | `dynamodb:GetItem` `dynamodb:PutItem` `dynamodb:DeleteItem` | 锁表 ARN | state 锁。Terraform 1.6 没有 `use_lockfile`，锁表不是可选项 |
@@ -161,7 +161,7 @@ KMS 资源只包含本项目创建的文件桶 CMK，条件限制为本区域 S3
 
 1. **IAM 命名 / path 约束** —— 是否要求建在某个 path 下，和 `az-cn-rdit-` 前缀是否冲突。
 2. **Permissions Boundary** —— 是否强制，强制的话 ARN 是多少。
-3. **S3 / TLS Secret 使用各环境专用 CMK**：由模板创建并开启轮换，AZ 提供管理员和部署角色 ARN。外部 RDS Secret 的 CMK 仍填到该服务的 `secrets_kms_key_arns`，AZ 配置外部 Key Policy。
-4. **ECR 仓库的 tag 可变性** —— `MUTABLE` 还是 `IMMUTABLE`。决定第 3 节发布方案能不能选 A。
+3. **S3 / CloudWatch Logs 使用各环境专用 CMK**：由模板创建并开启轮换，AZ 提供管理员和部署角色 ARN。TLS、RDS 等外部 Secret 的 CMK 填到该服务的 `secrets_kms_key_arns`，AZ 配置外部 Key Policy。
+4. **ECR 仓库的 tag 可变性** —— 本模板已创建仓库，`ecr_image_tag_mutability` 默认 `MUTABLE`。改 `IMMUTABLE` 则第 3 节发布方案不能选 A。
 
 对应的 Terraform 实现在 `iam.tf`，可以直接 diff。

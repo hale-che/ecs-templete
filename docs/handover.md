@@ -39,8 +39,8 @@
 
 **不是二选一。** AWS 服务走 Endpoint，Entra ID 和 Graph API 是公网出站，必须有 NAT 或出站代理。
 
-**这份代码建：** ECS 集群、3 个服务、3 个 Task Definition、ECS / CodeBuild 日志组、应用文件桶、TLS Secret 容器、CodeBuild 项目、每服务的执行 / 任务 / 构建角色、每环境两把项目专用 CMK（S3 / TLS Secret）。
-**这份代码不建：** VPC / 子网、安全组、ALB / 监听器 / 目标组、ECR 仓库、RDS。
+**这份代码建：** ECS 集群、3 个服务、3 个 Task Definition、ECS / CodeBuild 日志组、应用文件桶、ECR 仓库、CodeBuild 项目、每服务的执行 / 任务 / 构建角色、每环境两把项目专用 CMK（S3 / CloudWatch Logs）。
+**这份代码不建：** VPC / 子网、安全组、ALB / 监听器 / 目标组、RDS、存 state 的 S3 桶和锁表。
 
 ## AZ 需要创建的资源
 
@@ -70,7 +70,7 @@
 | 资源 | 说明 |
 | --- | --- |
 | 子网的出站能力 | **NAT 网关**，或 **VPC Endpoint**：`ecr.api`、`ecr.dkr`、`logs`、`secretsmanager`（接口型）+ `s3`（网关型，ECR 镜像层存在 S3）。两样都没有报 `CannotPullContainerError` |
-| 3 个 ECR 仓库 | 一服务一个。仓库里还得先有镜像，否则熔断回滚 |
+| 3 个 ECR 仓库 | 由本模板创建，一服务一个。仓库里还得先有镜像，否则熔断回滚 |
 
 ### D. 任务已启动但用户无法访问
 
@@ -116,7 +116,7 @@
 | **2 个**目标组 ARN（只有两个前端） | `services.*.target_group_arn` |
 | 强制 Tag 的实际值及创建日期 | 七个键名已在 `variables.tf` 定义，值填写在三个 tfvars 的 `mandatory_tags` 中 |
 | RDS 密码的 Secret ARN | `services.backend.secrets` |
-| KMS 管理员和实际部署角色的 IAM ARN | `kms_administrator_arns`；本模板创建 S3 和 TLS Secret 的 CMK |
+| KMS 管理员和实际部署角色的 IAM ARN | `kms_administrator_arns`；本模板创建 S3 和日志组的 CMK |
 | RDS 等外部 Secret 的 CMK ARN（如使用） | 引用该 Secret 的服务的 `secrets_kms_key_arns` |
 | **TLS 证书内容** | Terraform 创建 Secret 容器并自动注入其 ARN；证书值由人工录入，见 README |
 
@@ -128,14 +128,14 @@
 | --- | --- | --- |
 | `project` | 项目标识，小写，2–17 字符 | plan 报错 |
 | `mandatory_tags` 七个字段 | 已填所提供的值；创建日期需填写实际值 | 空值会导致 plan 报错；非空占位值仍需人工替换 |
-| `services.*.repository` ×3 | 三个 ECR 仓库名 | plan 过，任务起不来 |
+| `services.*.repository` ×3 | 三个 ECR 仓库名，本模板按这个名字创建仓库 | 含大写或残留占位符会 plan 报错 |
 | `services.*.tag` ×3 | 各环境首次部署引用的已推送时间戳 tag（北京时间 `yyyyMMddHHmmss`）；CodeBuild 自行生成构建 tag | 同上 |
 
 已填好不用动：`region`、`environment`、`cpu`、`memory`、`port`、`desired_count`、`log_retention_days`。
 
 ## KMS 与存量文件
 
-按最新 PR 评审，S3 与 TLS Secret 的 CMK 均由本模板创建，每环境各两把，由 AZ 接管运维。
+按最新 PR 评审，S3 与 CloudWatch Logs 的 CMK 均由本模板创建，每环境各两把，由 AZ 接管运维。
 轮换自动开启，删除等待期 30 天，并设置 `prevent_destroy`。Aurora / RDS 密钥仍由 AZ 的数据库模板管理。
 上线前按 `kms.md` 核对管理员角色、部署权限和真实读写；已有对象及历史版本不会自动换 key，需单独迁移。
 
@@ -179,8 +179,9 @@ DEV 扩充交付在 `policies/federated-ops/dev/`，完整 DEV 运维关联三�
 
 ## 待确认 —— 其他
 
-1. ECR 仓库的 tag 可变性：主 tag 已改为秒级时间戳；同仓库同秒构建或重复推送辅助 `sha-<commit>` 标签时，需核对不可变规则
+1. ECR 仓库的 tag 可变性：当前 `ecr_image_tag_mutability` 默认 `MUTABLE`。主 tag 是秒级时间戳，天然唯一，可改 `IMMUTABLE`；但同仓库同秒构建、或重复推送辅助 `sha-<commit>` 标签时会被不可变规则拒绝，需先核对发布流程
 2. IAM 命名 / path 约束，是否和 `az-cn-rdit-` 前缀冲突
 3. 是否强制 Permissions Boundary，ARN 是多少
 4. ALB 访问日志、WAF 规则集等基线要求（WAF 本身 SBP 已明确要有）
 5. 后端调 Graph API 发邮件：Entra ID 的 client credentials 存哪个 Secret
+6. `codebuild_image` 默认改成了 AL2023 的 `aws/codebuild/amazonlinux-x86_64-standard:5.0`（原来是已停止支持的 AL2），**cn-north-1 是否已提供该托管镜像需实测**，不可用就换回 `amazonlinux2-x86_64-standard:5.0` 并记录风险
