@@ -22,7 +22,7 @@ DEV 管理权限包括直接注册 Task Definition、修改服务和构建配置
 项目资源按 DEV 名称、账号/区域、已有资源标签或创建请求标签限定；查询可见部分区域级和账号级元数据。
 IAM 内联策略修改及构建项目修改具有较大间接授权能力，这些身份 Allow 策略并非隔离其他环境的 Permissions Boundary。
 
-三个 ECR 仓库名仍为占位符，policy01 / policy02 均须填写实际值。
+policy01 / policy02 的三个 ECR 仓库名已与 `env/dev.tfvars` 同步，分别为 `az-cn-rdit-aiec-backend-dev`、`az-cn-rdit-aiec-frontend-ext-dev`、`az-cn-rdit-aiec-frontend-int-dev`。
 KMS 管理和数据使用仍须对应 Key Policy 授权；ECS Exec 仍须配置任务角色及运行环境。
 项目未给出实际 Terraform state 桶 / 锁表及外部 RDS Secret ARN，这些资源不猜测授权。
 `ecs:DeregisterTaskDefinition` 不支持资源级限定，本次未授予区域级注销权限。

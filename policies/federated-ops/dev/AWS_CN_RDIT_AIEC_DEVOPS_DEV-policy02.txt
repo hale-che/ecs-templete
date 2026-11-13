@@ -42,9 +42,9 @@
                 "ecr:*"
             ],
             "Resource": [
-                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/REPLACE_ME_ECR_BACKEND",
-                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/REPLACE_ME_ECR_FRONTEND_EXT",
-                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/REPLACE_ME_ECR_FRONTEND_INT"
+                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/az-cn-rdit-aiec-backend-dev",
+                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/az-cn-rdit-aiec-frontend-ext-dev",
+                "arn:aws-cn:ecr:cn-north-1:332091793104:repository/az-cn-rdit-aiec-frontend-int-dev"
             ]
         },
         {
