@@ -93,7 +93,9 @@
                 "secretsmanager:*"
             ],
             "Resource": [
-                "arn:aws-cn:secretsmanager:cn-north-1:332091793104:secret:az-cn-rdit-aiec-*-dev-??????"
+                "arn:aws-cn:secretsmanager:cn-north-1:332091793104:secret:aiec/personal/tls-??????",
+                "arn:aws-cn:secretsmanager:cn-north-1:332091793104:secret:aiec/personal/backend-runtime-??????",
+                "arn:aws-cn:secretsmanager:cn-north-1:332091793104:secret:aiec/personal/database-??????"
             ]
         },
         {

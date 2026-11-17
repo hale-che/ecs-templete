@@ -23,7 +23,7 @@ secret_name_prefix = "aiec/personal"
 managed_secrets = {
   tls             = "HTTPS certificate, JSON keys cert / key (base64)"
   backend-runtime = "Backend runtime configuration, incl. SSO keys SSO_TENANT_ID / SSO_CLIENT_ID / SSO_CLIENT_SECRET"
-  database        = "RDS connection, JSON keys host / port / dbname / username / password"
+  database        = "Database credentials, JSON keys username / password; connection settings are in backend-runtime"
 }
 
 # IAM roles allowed to manage the S3 and CloudWatch Logs KMS keys (rotate, disable, delete).
@@ -114,15 +114,56 @@ services = {
     # TLS is injected from managed_secrets.tls; do not repeat it here.
     # "secret" injects the whole JSON; "secret:json-key" injects one key. Names must match the application code.
     secrets = {
-      BACKEND_RUNTIME   = "backend-runtime"
-      DB_HOST           = "database:host"
-      DB_PORT           = "database:port"
-      DB_NAME           = "database:dbname"
-      DB_USERNAME       = "database:username"
-      DB_PASSWORD       = "database:password"
-      SSO_TENANT_ID     = "backend-runtime:SSO_TENANT_ID"
-      SSO_CLIENT_ID     = "backend-runtime:SSO_CLIENT_ID"
-      SSO_CLIENT_SECRET = "backend-runtime:SSO_CLIENT_SECRET"
+      DB_HOST     = "backend-runtime:DB_HOST"
+      DB_PORT     = "backend-runtime:DB_PORT"
+      DB_NAME     = "backend-runtime:DB_NAME"
+      DB_SSL_MODE = "backend-runtime:DB_SSL_MODE"
+
+      SECRET_KEY = "backend-runtime:SECRET_KEY"
+
+      JWT_EXPIRE_DAYS = "backend-runtime:JWT_EXPIRE_DAYS"
+
+      CORS_ORIGINS = "backend-runtime:CORS_ORIGINS"
+
+      SSO_ENABLED                = "backend-runtime:SSO_ENABLED"
+      SSO_AUTHORITY_HOST         = "backend-runtime:SSO_AUTHORITY_HOST"
+      SSO_TENANT_ID              = "backend-runtime:SSO_TENANT_ID"
+      SSO_CLIENT_ID              = "backend-runtime:SSO_CLIENT_ID"
+      SSO_CLIENT_SECRET          = "backend-runtime:SSO_CLIENT_SECRET"
+      SSO_REDIRECT_URI           = "backend-runtime:SSO_REDIRECT_URI"
+      SSO_FRONTEND_URL           = "backend-runtime:SSO_FRONTEND_URL"
+      SSO_BOOTSTRAP_ADMIN_EMAILS = "backend-runtime:SSO_BOOTSTRAP_ADMIN_EMAILS"
+      SSO_SESSION_MINUTES        = "backend-runtime:SSO_SESSION_MINUTES"
+
+      MAIL_ENABLED              = "backend-runtime:MAIL_ENABLED"
+      MAIL_PROVIDER             = "backend-runtime:MAIL_PROVIDER"
+      MAIL_FROM                 = "backend-runtime:MAIL_FROM"
+      MAIL_FROM_NAME            = "backend-runtime:MAIL_FROM_NAME"
+      MAIL_MAX_ATTEMPTS         = "backend-runtime:MAIL_MAX_ATTEMPTS"
+      MAIL_RETRY_DELAY_SECONDS  = "backend-runtime:MAIL_RETRY_DELAY_SECONDS"
+      MAIL_BATCH_SIZE           = "backend-runtime:MAIL_BATCH_SIZE"
+      MAIL_POLL_DELAY_MS        = "backend-runtime:MAIL_POLL_DELAY_MS"
+      MAIL_GRAPH_TENANT_ID      = "backend-runtime:MAIL_GRAPH_TENANT_ID"
+      MAIL_GRAPH_CLIENT_ID      = "backend-runtime:MAIL_GRAPH_CLIENT_ID"
+      MAIL_GRAPH_CLIENT_SECRET  = "backend-runtime:MAIL_GRAPH_CLIENT_SECRET"
+      MAIL_GRAPH_AUTHORITY_HOST = "backend-runtime:MAIL_GRAPH_AUTHORITY_HOST"
+      MAIL_GRAPH_API_BASE_URL   = "backend-runtime:MAIL_GRAPH_API_BASE_URL"
+
+      MINIO_ENDPOINT   = "backend-runtime:MINIO_ENDPOINT"
+      MINIO_ACCESS_KEY = "backend-runtime:MINIO_ACCESS_KEY"
+      MINIO_SECRET_KEY = "backend-runtime:MINIO_SECRET_KEY"
+      MINIO_BUCKET     = "backend-runtime:MINIO_BUCKET"
+
+      # Reserved S3 settings from the template; the current backend still reads MINIO_* for file storage.
+      S3_REGION      = "backend-runtime:S3_REGION"
+      S3_BUCKET      = "backend-runtime:S3_BUCKET"
+      S3_PREFIX      = "backend-runtime:S3_PREFIX"
+      S3_KMS_KEY_ARN = "backend-runtime:S3_KMS_KEY_ARN"
+
+      API_DOCS_ENABLED = "backend-runtime:API_DOCS_ENABLED"
+
+      DB_USER     = "database:username"
+      DB_PASSWORD = "database:password"
     }
 
     # If these secrets use a CMK, also specify:

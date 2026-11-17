@@ -21,7 +21,7 @@
 - CodeBuild 项目和构建限定 `az-cn-rdit-aiec-*-build-dev`；允许修改项目、触发/停止构建及使用构建覆盖参数。
 - 应用文件桶 `az-cn-rdit-aiec-files-dev` 和代码桶 `az-cn-rdit-aiec-s3-codebase-dev`，同时覆盖桶 ARN 和对象 ARN。
 - ECS / CodeBuild 日志组按 DEV 名称限定，允许写入、查询、调整保留期和删除。
-- Secret 名称限定 `az-cn-rdit-aiec-*-dev`（ARN 另有 AWS 自动追加的六位后缀）；包含读取/修改 Secret 值、版本和资源策略等管理操作。
+- Secret 名称按当前 DEV 配置逐个限定为 `aiec/personal/tls`、`aiec/personal/backend-runtime`、`aiec/personal/database`（ARN 另有 AWS 自动追加的六位后缀）；包含读取/修改 Secret 值、版本和资源策略等管理操作。修改 `secret_name_prefix` 或 `managed_secrets` 时需同步更新 policy02。
 - 监控告警和 dashboard 限定 `az-cn-rdit-aiec-*-dev` 名称。
 - IAM 角色限定 `az-cn-rdit-aiec-*-dev`，允许角色生命周期、信任策略和内联权限策略管理；PassRole 分别限定给 ECS Tasks 和 CodeBuild。
 - KMS 创建要求请求标签 `Project=aiec`、`Environment=dev`；已有 key 管理及使用要求相同资源标签，alias 限定 `az-cn-rdit-aiec-*-dev`。
