@@ -1,11 +1,11 @@
-# Per the latest review, create separate S3 and CloudWatch Logs CMKs for each environment; AZ manages the keys. | 按最新评审要求：每环境创建自己的 S3 / CloudWatch Logs CMK，AZ 接管运维。
-# Use role ARN condition strings in the key policy to avoid a key -> role -> key dependency cycle. | Key Policy 先使用角色 ARN 条件字符串，避免 key -> role -> key 的循环依赖。
+# Per the latest review, create separate S3 and CloudWatch Logs CMKs for each environment; AZ manages the keys.
+# Use role ARN condition strings in the key policy to avoid a key -> role -> key dependency cycle.
 locals {
-  # KMS ViaService uses amazonaws.com in every partition; do not use the aws-cn DNS suffix. | KMS ViaService 在所有分区都使用 amazonaws.com，不能套用 aws-cn 的 DNS 后缀。
+  # KMS ViaService uses amazonaws.com in every partition; do not use the aws-cn DNS suffix.
   kms_s3_via_service      = "s3.${var.region}.amazonaws.com"
   kms_secrets_via_service = "secretsmanager.${var.region}.amazonaws.com"
 
-  # CloudWatch Logs encrypts on its own service principal; scope the key to this project's six log groups. | CloudWatch Logs 用自己的服务主体加解密，用加密上下文把 key 限定到本项目的六个日志组。
+  # CloudWatch Logs encrypts on its own service principal; scope the key to this project's six log groups.
   kms_logs_service_principal = "logs.${var.region}.amazonaws.com"
 
   log_group_arns = [
@@ -30,7 +30,7 @@ data "aws_iam_policy_document" "kms_administration" {
       type        = "AWS"
       identifiers = [local.account_root_arn]
     }
-    # Allow only the actual root identity to recover the policy, without delegating key usage to arbitrary IAM identities in the account. | 仅实际 root 身份恢复策略，不将整个账号的使用权限委派给任意 IAM 身份。
+    # Allow only the actual root identity to recover the policy, without delegating key usage to arbitrary IAM identities in the account.
     condition {
       test     = "ArnEquals"
       variable = "aws:PrincipalArn"

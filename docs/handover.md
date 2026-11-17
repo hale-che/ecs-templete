@@ -86,7 +86,7 @@
 | 资源 | 说明 |
 | --- | --- |
 | RDS 实例 | AZ 复用内部模板 |
-| 密码所在的 Secrets Manager Secret | ARN 要给我们，填进 `services.backend.secrets` |
+| 密码所在的 Secrets Manager Secret | Terraform 已建空的 `database` Secret，录入帐号密码即可；如改用 RDS 托管 Secret，把完整 ARN 填进 `services.backend.secrets` |
 | 该 Secret 的加密方式 | 默认 `aws/secretsmanager`。若使用 CMK，将 key ARN 填入 `services.backend.secrets_kms_key_arns`；代码补齐执行角色解密权限，AZ 配置 Key Policy |
 
 ## 安全组需放通的流向
@@ -115,10 +115,10 @@
 | 安全组 ID（已提供） | 三环境的 `services.*.security_group_ids` 均已填 `sg-0960c20f67f17cb68` |
 | **2 个**目标组 ARN（只有两个前端） | `services.*.target_group_arn` |
 | 强制 Tag 的实际值及创建日期 | 七个键名已在 `variables.tf` 定义，值填写在三个 tfvars 的 `mandatory_tags` 中 |
-| RDS 密码的 Secret ARN | `services.backend.secrets` |
+| RDS 帐号密码 | 录入 `database` Secret；外部 Secret 则填完整 ARN 到 `services.backend.secrets` |
 | KMS 管理员和实际部署角色的 IAM ARN | `kms_administrator_arns`；本模板创建 S3 和日志组的 CMK |
 | RDS 等外部 Secret 的 CMK ARN（如使用） | 引用该 Secret 的服务的 `secrets_kms_key_arns` |
-| **TLS 证书内容** | Terraform 创建 Secret 容器并自动注入其 ARN；证书值由人工录入，见 README |
+| **Secret 的值**（TLS 证书、后端配置、数据库密码） | Terraform 创建空 Secret 并自动注入；值 apply 后人工录入，见 README |
 
 ## 项目组填写（代码里）
 
@@ -129,7 +129,7 @@
 | `project` | 项目标识，小写，2–17 字符 | plan 报错 |
 | `mandatory_tags` 七个字段 | 已填所提供的值；创建日期需填写实际值 | 空值会导致 plan 报错；非空占位值仍需人工替换 |
 | `services.*.repository` ×3 | 三个 ECR 仓库名，本模板按这个名字创建仓库 | 含大写或残留占位符会 plan 报错 |
-| `services.*.tag` ×3 | 各环境首次部署引用的已推送时间戳 tag（北京时间 `yyyyMMddHHmmss`）；CodeBuild 自行生成构建 tag | 同上 |
+| `services.*.image_tag` ×3 | 各环境首次部署引用的已推送时间戳 tag（北京时间 `yyyyMMddHHmmss`）；CodeBuild 自行生成构建 tag | 同上 |
 
 已填好不用动：`region`、`environment`、`cpu`、`memory`、`port`、`desired_count`、`log_retention_days`。
 

@@ -2,8 +2,8 @@
 
 三个服务（`frontend-ext` / `frontend-int` / `backend`）的 Task Definition，区域 `cn-north-1`。
 
-管：ECS 集群、三个服务、Task Definition、日志组、应用文件桶、ECR 仓库、CodeBuild 项目、每服务的 IAM 角色、项目专用的 S3 / CloudWatch Logs 两把 CMK。
-不管：安全组、ALB / 目标组 / 监听器、RDS、Secrets Manager 里的密钥、存 state 的 S3 桶和锁表。前三样由 AZ 创建，ID 填进 tfvars。
+管：ECS 集群、三个服务、Task Definition、日志组、应用文件桶、ECR 仓库、CodeBuild 项目、每服务的 IAM 角色、项目专用的 S3 / CloudWatch Logs 两把 CMK、Secrets Manager 空 Secret（值人工录入）。
+不管：安全组、ALB / 目标组 / 监听器、RDS、Secret 的值、存 state 的 S3 桶和锁表。前三样由 AZ 创建，ID 填进 tfvars。
 
 apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任务在跑。
 
@@ -16,14 +16,14 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | `project` | 项目标识，小写，2–17 字符 |
 | `mandatory_tags` | AZ 要求的七个标签；已填所提供的值，创建日期需填写实际值 |
 | `repository` ×3 | 三个 ECR 仓库名，本模板按这个名字建仓库，只收小写 |
-| `tag` ×3 | 各环境首次部署使用的已推送时间戳 tag，例如 `20261112153045`；不控制 CodeBuild 构建 tag |
+| `image_tag` ×3 | 各环境首次部署使用的已推送时间戳 tag，例如 `20261112153045`；不控制 CodeBuild 构建 tag |
 | `subnet_ids` | AZ 给的私有子网，≥2 个 |
 | `security_group_ids` ×3 | AZ 给的安全组 |
 | `target_group_arn` ×2 | AZ 给的目标组，只有两个前端 |
 | `repo_url` ×3 | GitHub 仓库地址 |
 | `kms_administrator_arns` | AZ 密钥管理员及实际执行 Terraform 的 IAM 角色 ARN，每环境单独填写 |
 
-S3 和日志组分别使用本项目创建的 CMK，自动开启轮换。TLS 等外部 Secret 如使用 CMK，接入方式见 `docs/kms.md`。任务数固定：DEV/PPD 每服务 1 个，PRD 每服务 2 个。
+S3 和日志组分别使用本项目创建的 CMK，自动开启轮换。外部 Secret 如使用 CMK，接入方式见 `docs/kms.md`。任务数固定：DEV/PPD 每服务 1 个，PRD 每服务 2 个。
 
 交接给 AZ 看 `docs/handover.md`：谁填什么、填在哪、不填会怎样。
 开发打镜像看 `docs/image-requirements.md`。
@@ -75,9 +75,9 @@ CPU 单位 / 内存 MiB。三个环境均不创建 Auto Scaling：DEV/PPD 每服
 | 最小权限 IAM | 每服务一对角色，ARN 按该服务自己的仓库和密钥收口 |
 | IAM 条件限制 | CodeBuild 信任精确限定项目 ARN；支持的操作增加项目标签/集群条件；ECS 信任限制见整改记录 |
 | 强制 Tag | 七个字段必填且不许留空，走 `default_tags` |
-| 密码不硬编码 | 只传 Secret ARN，密文不进 state |
+| 密码不硬编码 | Terraform 只建空 Secret，值人工录入，不进代码和 state |
 | S3 加密 | SSE-KMS，使用本模板创建的项目 CMK；桶策略禁止显式改用其他加密方式或密钥 |
-| Secrets 加密 | 密钥由外部创建，模板只引用 ARN；使用 CMK 的按实际 key ARN 配置执行角色权限 |
+| Secrets 加密 | 模板创建的 Secret 用 `aws/secretsmanager`；外部 Secret 使用 CMK 的按实际 key ARN 配置执行角色权限 |
 
 `mandatory_tags` 使用 AZ 提供的七个键名：`applicationname`、`applicationowner`、`Cost Center`、`IDMD No`、`applicationid`、`environment`、`creationdate`。
 实际值填写在各环境的 `env/*.tfvars`；`applicationid` 只填 `SNSVC0008172`，不包含链接格式。
@@ -92,13 +92,13 @@ IAM 权限清单见 `docs/iam-permissions.md`。
 `terraform apply` 本身不会失败（服务不等任务就绪），但有两样东西 Terraform 给不了，
 缺了任务就起不来：**Secrets Manager 里的密钥**和**镜像**。
 
-1. **确认 `tls_secret_arn` 指向的密钥已有 `cert` / `key` 两个 JSON 键**，值是 base64：
+1. **apply 后给 `managed_secrets` 创建的空 Secret 录入值**（名字见 `terraform output secret_arns`），tls 须有 `cert` / `key` 两个 base64 JSON 键：
 
-       aws secretsmanager get-secret-value --secret-id aiec/personal/tls \
-         --query SecretString --output text | jq 'keys'
+       aws secretsmanager put-secret-value --secret-id aiec/personal/tls \
+         --secret-string file://tls.json
 
 2. `terraform apply` —— 集群、服务、ECR、CodeBuild、两把 CMK 全部建好，服务此时跑不起任务
-3. 触发 CodeBuild 构建推镜像，把实际生成的时间戳 tag 填进 tfvars 的 `services.*.tag`
+3. 触发 CodeBuild 构建推镜像，把实际生成的时间戳 tag 填进 tfvars 的 `services.*.image_tag`
 4. 部署 ECS（`update-service` 指向对应 revision），任务起来
 
 第 1、3 步漏了的表现分别是 `ResourceInitializationError`（取不到密钥）和
@@ -153,6 +153,7 @@ Terraform 管配置，CodeBuild 管镜像和部署，互不覆盖。靠两个设
 一个环境一个，名字 `az-cn-rdit-<project>-files-<environment>`（S3 桶名只收小写）。
 后端读写它，任务角色权限由 `file_bucket_access = true` 自动生成 —— 对象操作限在桶内，
 `ListBucket` 的资源只能是桶本身，这是 S3 的规则。
+文件桶的服务器访问日志写入 `az-cn-rdit-<project>-s3-access-logs-<environment>`（前缀 `files/`，SSE-S3，按 `log_retention_days` 过期）。
 
 按最新 PR 评审，本模板为每个环境创建专用 S3 CMK 和 CloudWatch Logs CMK；密钥由 AZ 管理员运维。
 S3 开启 SSE-KMS 和 Bucket Key，后端任务角色获得限定到文件桶、密钥和 S3 服务上下文的权限。
@@ -195,28 +196,25 @@ SSE-S3、SSE-C、其他密钥，以及只指定 `aws:kms` 而不指定 key ARN �
 `force_delete` 没开，所以仓库里有镜像时 `terraform destroy` 会失败 —— 这是刻意的。
 
 tag 约定见 `docs/image-requirements.md` 第 8 节：主 tag 是 buildspec 生成的北京时间 `yyyyMMddHHmmss`，
-另带 `sha-<commit>` 辅助标签。`services.*.tag` 只是首次部署引用的那个已存在 tag。
+另带 `sha-<commit>` 辅助标签。`services.*.image_tag` 只是首次部署引用的那个已存在 tag。
 
 仓库名含大写会在 plan 阶段报错（`variables.tf` 的 validation），ECR 不收大写。
 
 ## 密钥
 
-**密钥全部在 Terraform 之外创建，模板只引用 ARN，值不进 state。**
+**Terraform 只创建空 Secret（`secrets.tf`），值 apply 后人工录入，不进代码和 state。**
+名字是 `<secret_name_prefix>/<key>`：DEV 为 `aiec/personal/<key>`，PPD / PRD 默认 `aiec/<environment>/<key>`（同账号不能重名）。
 
-| 密钥 | 密钥键 | 注入成 | 形式 |
+| 密钥 | key | 注入成 | 形式 |
 | --- | --- | --- | --- |
-| TLS 证书 | `aiec/personal/tls` | 三个服务的 `TLS_CERT` / `TLS_KEY` | 取 `cert` / `key` 两个 JSON 键 |
-| 后端各项配置 | `aiec/personal/backend-runtime` | backend 的 `BACKEND_RUNTIME` | 整段 JSON |
-| 数据库帐号密码 | `aiec/personal/database` | backend 的 `DATABASE` | 整段 JSON |
+| TLS 证书 | `tls` | 三个服务的 `TLS_CERT` / `TLS_KEY` | 取 `cert` / `key` 两个 JSON 键 |
+| 后端各项配置 | `backend-runtime` | backend 的 `BACKEND_RUNTIME` | 整段 JSON |
+| 数据库连接 | `database` | backend 的 `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD` | 键 `host` / `port` / `dbname` / `username` / `password` |
+| SSO（Entra ID） | `backend-runtime` | backend 的 `SSO_TENANT_ID` / `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` | 同名 JSON 键 |
 
-TLS 单独做成变量而不是塞进每个服务的 `secrets`，因为三个服务都要用，统一注入省得重复填。
-
-ARN 必须是完整形式，**结尾那 6 位随机后缀不能省** —— 名字推不出来，从控制台复制或者：
-
-    aws secretsmanager describe-secret --secret-id aiec/personal/tls --query ARN --output text
-
-引用 JSON 里的某个键，在 ARN 后面接 `:键名::`，例如 `...:secret:aiec/personal/database-AbCdEf:password::`。
-`locals.tf:72` 会按冒号截取前 7 段还原出 Secret 本体 ARN，用来生成 IAM 权限。
+`tls` 必填，自动注入三个服务；其他 Secret 在服务的 `secrets` 里按 key 引用，如 `DB_PASSWORD = "database:password"`。环境变量名须与应用代码一致。
+取 JSON 里的某个键写 `"database:password"`；引用外部 Secret 仍可写完整 ARN（带 6 位后缀）。
+未录入值之前任务会报 `ResourceInitializationError`。
 
 执行角色的 `secretsmanager:GetSecretValue` 按实际引用的 ARN 自动生成，不会给到别的 Secret。
 这些 Secret 如果用了 CMK，在引用它的服务里填 `secrets_kms_key_arns`，执行角色会拿到限定到

@@ -1,6 +1,6 @@
 locals {
-  # Fargate supports fixed CPU and memory combinations; an invalid combination causes an error at apply. | Fargate 的 CPU/内存组合是固定表，组合错了要到 apply 才报。
-  # tomap and tolist are required because mixed value types cannot be indexed with a variable. | tomap + tolist 是必须的：值类型不统一时，用变量做下标取不出来。
+  # Fargate supports fixed CPU and memory combinations; an invalid combination causes an error at apply.
+  # tomap and tolist are required because mixed value types cannot be indexed with a variable.
   fargate_memory = tomap({
     "256"   = tolist([512, 1024, 2048])
     "512"   = range(1024, 4096 + 1, 1024)
@@ -34,14 +34,19 @@ resource "aws_ecs_task_definition" "this" {
 
   tags = { Name = local.name[each.key] }
 
-  # Leave track_latest unset: Terraform tracks only its own registered revision. A revision newly registered by CodeBuild | 不设 track_latest：Terraform 只认自己注册的那个 revision。CodeBuild 新注册的
-  # is not treated as drift, so ignore_changes is unnecessary here. | revision 不会被当成偏移，所以这里不需要 ignore_changes。
+  # Leave track_latest unset: Terraform tracks only its own registered revision. A revision newly registered by CodeBuild
+  # is not treated as drift, so ignore_changes is unnecessary here.
   track_latest = false
 
   lifecycle {
     precondition {
+      condition     = alltrue([for ref in values(each.value.secrets) : startswith(ref, "arn:") || contains(keys(var.managed_secrets), split(":", ref)[0])])
+      error_message = "Service ${each.key}: every secrets value must be a full ARN or a key defined in managed_secrets."
+    }
+
+    precondition {
       condition     = contains(lookup(local.fargate_memory, tostring(each.value.cpu), []), each.value.memory)
-      error_message = "服务 ${each.key} 的 cpu=${each.value.cpu} 与 memory=${each.value.memory} 不是 Fargate 合法组合，见 ECS 任务大小表。"
+      error_message = "Service ${each.key}: cpu=${each.value.cpu} and memory=${each.value.memory} is not a valid Fargate combination; see the ECS task size table."
     }
   }
 }

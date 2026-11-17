@@ -154,7 +154,7 @@ Terraform 只注入证书变量，不会替镜像生成这些文件或开启 Spr
 | 环境 | tag |
 | --- | --- |
 | DEV / PPD / PRD 构建 | 构建时生成北京时间 `yyyyMMddHHmmss`，例如 `20261112153045` |
-| 各环境首次部署 | 将已推送的实际时间戳 tag 填入 `env/*.tfvars` 的 `services.*.tag` |
+| 各环境首次部署 | 将已推送的实际时间戳 tag 填入 `env/*.tfvars` 的 `services.*.image_tag` |
 
 三个 buildspec 在 `pre_build` 执行 `export IMAGE_TAG="$(TZ=Asia/Shanghai date +%Y%m%d%H%M%S)"`，
 同一次构建的 build / push / 元数据记录复用该值。不要在 Terraform 中使用 `timestamp()`，否则 tag 会随 apply 改变而不是随构建改变。

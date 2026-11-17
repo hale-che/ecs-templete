@@ -5,10 +5,10 @@ data "aws_partition" "current" {}
 locals {
   partition  = data.aws_partition.current.partition
   account_id = data.aws_caller_identity.current.account_id
-  # In aws-cn, dns_suffix is amazonaws.com.cn; using the data source avoids omitting .cn. | aws-cn 下 dns_suffix 是 amazonaws.com.cn，手写最容易漏掉那个 .cn。
+  # In aws-cn, dns_suffix is amazonaws.com.cn; using the data source avoids omitting .cn.
   ecr_registry = "${local.account_id}.dkr.ecr.${var.region}.${data.aws_partition.current.dns_suffix}"
 
-  # Required resource naming: az-cn-rdit-<project>-<purpose>-<dev|ppd|prd>. | 评审命名要求：az-cn-rdit-<project>-<资源用途>-<dev|ppd|prd>。
+  # Required resource naming: az-cn-rdit-<project>-<purpose>-<dev|ppd|prd>.
   name_prefix  = "az-cn-rdit-${var.project}"
   cluster_name = "${local.name_prefix}-ecs-fargate-${var.environment}"
 
@@ -29,7 +29,8 @@ locals {
 
   log_group = { for k, v in local.name : k => "/ecs/${v}" }
 
-  file_bucket_name = coalesce(var.file_bucket_name, "${local.name_prefix}-files-${var.environment}")
+  file_bucket_name       = coalesce(var.file_bucket_name, "${local.name_prefix}-files-${var.environment}")
+  access_log_bucket_name = coalesce(var.access_log_bucket_name, "${local.name_prefix}-s3-access-logs-${var.environment}")
 
   ecr_arn = {
     for k, s in var.services :
@@ -51,28 +52,42 @@ locals {
     k => "arn:${local.partition}:logs:${var.region}:${local.account_id}:log-group:${v}:log-stream:*"
   }
 
-  # The TLS secret is shared by all three services, so merge it here instead of repeating it per service. | TLS 密钥三个服务共用，在这里统一合进去，不用每个服务重复填。
-  # Service-specific secrets go in the tfvars secrets map; tfvars takes precedence when names conflict. | 服务各自的密钥填 tfvars 的 secrets，同名时以 tfvars 为准。
+  secret_name_prefix  = coalesce(var.secret_name_prefix, "${var.project}/${var.environment}")
+  managed_secret_arns = { for k, s in aws_secretsmanager_secret.this : k => s.arn }
+
+  # Resolve "key" / "key:json-key" to managed secret ARNs; full ARNs pass through. Unknown keys fail the task definition precondition.
+  service_secrets = {
+    for k, s in var.services : k => {
+      for ek, ref in s.secrets : ek => startswith(ref, "arn:") ? ref : (
+        length(split(":", ref)) == 2
+        ? "${lookup(local.managed_secret_arns, split(":", ref)[0], ref)}:${split(":", ref)[1]}::"
+        : lookup(local.managed_secret_arns, ref, ref)
+      )
+    }
+  }
+
+  # The TLS secret is shared by all three services, so merge it here instead of repeating it per service.
+  # Service-specific secrets go in the tfvars secrets map; tfvars takes precedence when names conflict.
   secrets_effective = {
     for k, s in var.services : k => merge(
       {
-        TLS_CERT = "${var.tls_secret_arn}:cert::"
-        TLS_KEY  = "${var.tls_secret_arn}:key::"
+        TLS_CERT = "${local.managed_secret_arns["tls"]}:cert::"
+        TLS_KEY  = "${local.managed_secret_arns["tls"]}:key::"
       },
-      s.secrets,
+      local.service_secrets[k],
     )
   }
 
-  # IAM requires the base secret ARN. ECS valueFrom may include a :json-key:: suffix; keep the first seven colon-separated segments. | IAM 要密钥本体的 ARN。ECS 的 valueFrom 可以带 :json-key:: 后缀，截掉前 7 段还原。
+  # IAM requires the base secret ARN. ECS valueFrom may include a :json-key:: suffix; keep the first seven colon-separated segments.
   secret_arns = {
     for k, v in local.secrets_effective :
-    k => distinct([for a in values(v) : join(":", slice(split(":", a), 0, 7))])
+    k => distinct([for a in values(v) : join(":", slice(split(":", a), 0, min(7, length(split(":", a)))))])
   }
 
   container_base = {
     for k, s in var.services : k => {
       name      = k
-      image     = "${local.ecr_registry}/${s.repository}:${s.tag}"
+      image     = "${local.ecr_registry}/${s.repository}:${s.image_tag}"
       essential = true
 
       readonlyRootFilesystem = s.readonly_root_filesystem
@@ -97,7 +112,7 @@ locals {
     }
   }
 
-  # Append healthCheck with merge instead of setting it to null; ECS rejects explicit null container properties. | 用 merge 追加而不是写 healthCheck = null：ECS 不接受显式 null 的容器属性。
+  # Append healthCheck with merge instead of setting it to null; ECS rejects explicit null container properties.
   container_definitions = {
     for k, s in var.services : k => [merge(
       local.container_base[k],

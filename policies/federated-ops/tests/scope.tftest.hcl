@@ -18,7 +18,7 @@ run "dev_permissions" {
         can(regex("^[a-z]+:(Describe|List|Get|BatchGet|Filter)", action))
       ])
     ])
-    error_message = "只读策略不能包含修改操作。"
+    error_message = "Read-only policy must not contain write actions."
   }
 
   assert {
@@ -26,14 +26,14 @@ run "dev_permissions" {
       for statement in jsondecode(output.operations_policy_json).Statement :
       try(statement.Resource != "*" && !contains(statement.Resource, "*"), false)
     ])
-    error_message = "运维操作不能授权全账号资源。"
+    error_message = "Operations policy must not grant account-wide resources."
   }
 
   assert {
     condition = toset(flatten([
       for statement in jsondecode(output.operations_policy_json).Statement : statement.Action
     ])) == toset(["ecs:UpdateService", "iam:PassRole", "codebuild:StartBuild", "codebuild:StopBuild"])
-    error_message = "操作权限只能包含已明确的服务更新、构建触发/停止及所需角色传递。"
+    error_message = "Operations may only include the defined service updates, build start/stop, and required PassRole."
   }
 
   assert {
@@ -45,7 +45,7 @@ run "dev_permissions" {
         statement.Condition.BoolIfExists["ecs:enable-execute-command"] == "false", false
       )
     ])
-    error_message = "每个服务只能切换自己的任务定义，且不能开启 ECS Exec。"
+    error_message = "Each service may only switch to its own task definitions and cannot enable ECS Exec."
   }
 
   assert {
@@ -53,7 +53,7 @@ run "dev_permissions" {
       for statement in jsondecode(output.operations_policy_json).Statement : statement
       if statement.Sid == "StartConfiguredBuilds"
     ]).Condition.Null["codebuild:source.buildspec"] == "true"
-    error_message = "不能允许临时覆盖 buildspec。"
+    error_message = "Must not allow buildspec overrides."
   }
 }
 
@@ -74,12 +74,12 @@ run "prd_isolation" {
       !strcontains(policy, "az-cn-rdit-example-") && !strcontains(policy, "123456789012") &&
       !strcontains(policy, "frontend-ext") && !strcontains(policy, "example/backend")
     ])
-    error_message = "切换账号、环境和服务后不能残留示例或其他环境的授权。"
+    error_message = "After switching account, environment, and service, no example or other-environment grants may remain."
   }
 
   assert {
     condition     = strcontains(output.readonly_policy_json, "repository/custom/production-api")
-    error_message = "ECR 授权必须使用输入的实际仓库名，不能按服务名猜测。"
+    error_message = "ECR grants must use the given repository names, not names guessed from service names."
   }
 }
 

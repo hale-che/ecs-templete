@@ -1,4 +1,4 @@
-# Index by service name, which is also the container name. | 按服务名索引。服务名同时也是容器名。
+# Index by service name, which is also the container name.
 
 output "cluster_name" {
   value = aws_ecs_cluster.this.name
@@ -13,12 +13,12 @@ output "service_names" {
 }
 
 output "families" {
-  description = "Task Definition family。CodeBuild 用它拉最新 revision。"
+  description = "Task definition family. CodeBuild uses it to fetch the latest revision."
   value       = { for k, v in aws_ecs_task_definition.this : k => v.family }
 }
 
 output "task_definition_arns" {
-  description = "Terraform 创建的那个 revision 的 ARN，不一定是线上正在跑的。"
+  description = "ARN of the revision created by Terraform; not necessarily the one currently running."
   value       = { for k, v in aws_ecs_task_definition.this : k => v.arn }
 }
 
@@ -27,7 +27,7 @@ output "execution_role_arns" {
 }
 
 output "task_role_arns" {
-  description = "业务代码访问 AWS 资源用的角色，权限在 task_role_policy_statements 里加。"
+  description = "Role the application uses to access AWS; add permissions via task_role_policy_statements."
   value       = { for k, v in aws_iam_role.task : k => v.arn }
 }
 
@@ -36,36 +36,41 @@ output "log_group_names" {
 }
 
 output "image_urls" {
-  description = "推导出的完整镜像地址，CodeBuild push 时直接用，不用自己拼 .com.cn。"
-  value       = { for k, s in var.services : k => "${local.ecr_registry}/${s.repository}:${s.tag}" }
+  description = "Full derived image URI used by CodeBuild push, including the .com.cn suffix."
+  value       = { for k, s in var.services : k => "${local.ecr_registry}/${s.repository}:${s.image_tag}" }
 }
 
 output "ecr_repository_urls" {
-  description = "本模板创建的 ECR 仓库地址，按服务名索引。"
+  description = "ECR repository URLs created by this template, keyed by service name."
   value       = { for k, s in var.services : k => aws_ecr_repository.this[s.repository].repository_url }
 }
 
 output "codebuild_projects" {
-  description = "CodeBuild 项目名。手工触发：aws codebuild start-build --project-name <名字>。"
+  description = "CodeBuild project names. Trigger manually: aws codebuild start-build --project-name <name>."
   value       = { for k, v in aws_codebuild_project.build : k => v.name }
 }
 
 output "file_bucket" {
-  description = "应用文件桶。Intelligent-Tiering，内置 30 天转 IA、90 天转 Archive Instant Access。"
+  description = "Application file bucket. Intelligent-Tiering moves objects to IA after 30 days and Archive Instant Access after 90."
   value       = aws_s3_bucket.files.bucket
 }
 
+output "access_log_bucket" {
+  description = "Bucket receiving S3 server access logs for the file bucket."
+  value       = aws_s3_bucket.access_logs.bucket
+}
+
 output "file_bucket_kms_key_arn" {
-  description = "本环境创建的应用文件桶 CMK。"
+  description = "CMK for the application file bucket in this environment."
   value       = aws_kms_key.files.arn
 }
 
 output "logs_kms_key_arn" {
-  description = "本环境创建的 CloudWatch Logs CMK，ECS 和 CodeBuild 日志组共用。"
+  description = "CloudWatch Logs CMK for this environment, shared by ECS and CodeBuild log groups."
   value       = aws_kms_key.logs.arn
 }
 
-output "tls_secret_arn" {
-  description = "TLS 证书的 Secret ARN，外部已建好，本模板只引用。"
-  value       = var.tls_secret_arn
+output "secret_arns" {
+  description = "Secrets created by Terraform, keyed by managed_secrets key. Enter their values after apply."
+  value       = local.managed_secret_arns
 }

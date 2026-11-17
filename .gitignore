@@ -5,7 +5,7 @@
 crash.log
 crash.*.log
 
-# 真实值不进仓库：tfvars 里的 REPLACE_ME 替换后留在本地或走 CI 变量。
+# Keep real values out of the repo: replace REPLACE_ME in tfvars locally or via CI variables.
 *.auto.tfvars
 override.tf
 override.tf.json
