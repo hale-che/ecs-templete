@@ -124,14 +124,15 @@ variable "ecr_max_image_count" {
 }
 
 variable "kms_administrator_arns" {
-  description = "IAM role ARNs of AZ key administrators and the Terraform deployer; required per environment. Include the deploy role to pass the KMS lockout check."
+  description = "Extra key administrator role ARNs (e.g. AZ). The role running Terraform is added automatically."
   type        = list(string)
+  default     = []
 
   validation {
-    condition = length(var.kms_administrator_arns) > 0 && alltrue([
+    condition = alltrue([
       for arn in var.kms_administrator_arns : can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", arn))
     ])
-    error_message = "kms_administrator_arns needs at least one full IAM role ARN; STS session ARNs and wildcards are not allowed."
+    error_message = "kms_administrator_arns may only contain full IAM role ARNs; STS session ARNs and wildcards are not allowed."
   }
 
   # REPLACE_ME consists of valid role-name characters, so the rule above accepts it and the failure surfaces only when the key is created.

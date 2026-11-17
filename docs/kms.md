@@ -15,16 +15,15 @@ Secrets Manager 里的密钥（TLS 证书、数据库密码、后端配置）由
 
 ## 必填参数及身份
 
-三个 `env/*.tfvars` 分别填写 `kms_administrator_arns`，至少包含实际执行 Terraform 的 IAM 角色：
+执行 Terraform 的角色自动加为密钥管理员（`aws_iam_session_context` 由会话还原出 IAM role ARN），不用填写。
+`kms_administrator_arns` 只在需要额外的 AZ 密钥管理员时填写，默认 `[]`：
 
 ```hcl
-kms_administrator_arns = [
-  "arn:aws-cn:iam::123456789012:role/az-deployment-admin",
-  "arn:aws-cn:iam::123456789012:role/az-key-admin",
-]
+kms_administrator_arns = ["arn:aws-cn:iam::123456789012:role/az-key-admin"]
 ```
 
-必须填写 IAM role ARN，不是 `arn:...:sts::...:assumed-role/...` 会话 ARN；替换成 AZ 真实角色。
+必须填写 IAM role ARN，不是 `arn:...:sts::...:assumed-role/...` 会话 ARN。
+每次 apply 的角色都会写进 Key Policy：换用别的角色 apply 时，原部署角色会被移出，固定用同一个部署角色。
 这些管理员可以管理 key / alias / policy / rotation；不把整个账号所有角色默认授权为密钥使用者。
 实际部署角色未包含在其中时，KMS 的防锁定安全检查可能拒绝创建/更新策略，不能绕过该检查。
 保留只允许实际账号 root 身份执行 `PutKeyPolicy` 的恢复入口。
@@ -77,7 +76,7 @@ Aurora / RDS 存储加密、备份和 GuardDuty 等外部身份的授权仍由 A
 
 ## 上线验证
 
-1. 填入真实 `kms_administrator_arns` 及其他环境参数，确认部署角色具备 KMS 创建权限。
+1. 按需填写额外的 `kms_administrator_arns` 及其他环境参数，确认部署角色具备 KMS 创建权限。
 2. 审查真实 plan，特别是本轮命名修改引起的资源替换，先制定存量迁移方案。
 3. 部署后分别检查 S3 默认加密、日志组的 kmsKeyId 与两个 key 的轮换状态。
 4. 用后端任务角色验证上传/下载；用执行角色验证 TLS 注入；前端任务角色不能使用文件桶 key。

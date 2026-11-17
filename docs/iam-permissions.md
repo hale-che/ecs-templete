@@ -86,7 +86,7 @@ KMS 资源只包含本项目创建的文件桶 CMK，条件限制为本区域 S3
 ### 还需要确认的
 
 - [ ] S3 的 bucket 名和前缀
-- [ ] 填写每环境 `kms_administrator_arns`，包含实际部署角色并核对密钥运维权限
+- [ ] 确认各环境固定用同一部署角色 apply（自动成为密钥管理员）；按需填写额外 `kms_administrator_arns`
 - [ ] 邮件走 SMTP 还是别的
 - [ ] 发送 SQS / SNS？哪个队列或主题
 - [ ] 读写 DynamoDB？哪张表
@@ -149,7 +149,7 @@ KMS 资源只包含本项目创建的文件桶 CMK，条件限制为本区域 S3
 | `logs:CreateLogGroup` `logs:DeleteLogGroup` `logs:DescribeLogGroups` `logs:PutRetentionPolicy` `logs:TagResource` `logs:ListTagsForResource` | `log-group:/ecs/*` | 建日志组 |
 | `ecr:CreateRepository` `ecr:DeleteRepository` `ecr:DescribeRepositories` `ecr:TagResource` `ecr:UntagResource` `ecr:ListTagsForResource` `ecr:PutImageTagMutability` `ecr:PutImageScanningConfiguration` `ecr:GetLifecyclePolicy` `ecr:PutLifecyclePolicy` `ecr:DeleteLifecyclePolicy` | 三个 ECR 仓库 ARN（创建时 `*`） | 本模板现在创建 ECR 仓库并配 tag 可变性、扫描和 untagged 清理 |
 | `sts:GetCallerIdentity` | `*` | 取账号 ID 拼 ARN，无资源概念 |
-| `kms:CreateKey`、key / alias 的读取、策略、标签、轮换和生命周期操作 | 创建时 `*` 配合 `Project` / `environment` 请求标签；后续限定本环境 CMK / alias | 本模板现在创建两把 CMK（S3 / Logs）；实际部署角色必须列入 `kms_administrator_arns`，见 `kms.md` |
+| `kms:CreateKey`、key / alias 的读取、策略、标签、轮换和生命周期操作 | 创建时 `*` 配合 `Project` / `environment` 请求标签；后续限定本环境 CMK / alias | 本模板现在创建两把 CMK（S3 / Logs）；部署角色自动成为密钥管理员，见 `kms.md` |
 | `s3:PutEncryptionConfiguration` `s3:GetEncryptionConfiguration` `s3:PutBucketPolicy` `s3:GetBucketPolicy` `s3:DeleteBucketPolicy` | 应用文件桶 ARN | 管理 SSE-KMS 默认加密及禁止加密降级的桶策略；此外仍需原有建桶、版本控制和生命周期权限 |
 | `s3:ListBucket` | state bucket | **不能漏。** 缺了 S3 对不存在的 key 返回 403 而不是 404，`terraform init` 报的错指向完全不相干的地方 |
 | `s3:GetObject` `s3:PutObject` `s3:DeleteObject` | state key | 读写 state |

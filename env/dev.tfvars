@@ -27,10 +27,8 @@ managed_secrets = {
 }
 
 # IAM roles allowed to manage the S3 and CloudWatch Logs KMS keys (rotate, disable, delete).
-# Must include the role that runs Terraform, otherwise AWS rejects the key policy.
-kms_administrator_arns = [
-  "arn:aws-cn:iam::332091793104:role/REPLACE_ME", # replace with the AZ key administrator and the actual deployment role
-]
+# The role running Terraform is added automatically; list extra AZ key administrators here if required.
+kms_administrator_arns = []
 
 # Private subnets supplied by AZ; all three environments currently share these two subnets and the configured service security group.
 subnet_ids = [

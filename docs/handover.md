@@ -61,7 +61,7 @@
 | 私有子网 | ≥2，跨可用区 | 代码里有校验，少于两个直接报错 |
 | 安全组 | 当前共用 1 个 | 已填 `sg-0960c20f67f17cb68`；三个环境的三个服务共用，流向见下文，规则由 AZ 管理 |
 | ALB 目标组 | **2** | 只有两个前端。后端走 Service Connect，不挂 ALB |
-| KMS 管理员 / 部署角色 | 每环境提供实际 IAM role ARN | 填 `kms_administrator_arns`；本模板创建两把 CMK，部署身份须具备创建 key / alias 的权限，见 `kms.md` |
+| KMS 管理员 / 部署角色 | 部署角色自动加入；额外 AZ 管理员按需提供 IAM role ARN | 填 `kms_administrator_arns`（可选）；本模板创建两把 CMK，部署身份须具备创建 key / alias 的权限，见 `kms.md` |
 
 ### C. apply 成功但任务无法启动
 
@@ -116,7 +116,7 @@
 | **2 个**目标组 ARN（只有两个前端） | `services.*.target_group_arn` |
 | 强制 Tag 的实际值及创建日期 | 七个键名已在 `variables.tf` 定义，值填写在三个 tfvars 的 `mandatory_tags` 中 |
 | RDS 帐号密码 | 录入 `database` Secret；外部 Secret 则填完整 ARN 到 `services.backend.secrets` |
-| KMS 管理员和实际部署角色的 IAM ARN | `kms_administrator_arns`；本模板创建 S3 和日志组的 CMK |
+| 额外 KMS 管理员的 IAM ARN（可选） | `kms_administrator_arns`；本模板创建 S3 和日志组的 CMK |
 | RDS 等外部 Secret 的 CMK ARN（如使用） | 引用该 Secret 的服务的 `secrets_kms_key_arns` |
 | **Secret 的值**（TLS 证书、后端配置、数据库密码） | Terraform 创建空 Secret 并自动注入；值 apply 后人工录入，见 README |
 

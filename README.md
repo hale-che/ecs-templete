@@ -21,7 +21,7 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | `security_group_ids` ×3 | AZ 给的安全组 |
 | `target_group_arn` ×2 | AZ 给的目标组，只有两个前端 |
 | `repo_url` ×3 | GitHub 仓库地址 |
-| `kms_administrator_arns` | AZ 密钥管理员及实际执行 Terraform 的 IAM 角色 ARN，每环境单独填写 |
+| `kms_administrator_arns` | 可选：额外的 AZ 密钥管理员 role ARN；执行 Terraform 的角色自动加入 |
 
 S3 和日志组分别使用本项目创建的 CMK，自动开启轮换。外部 Secret 如使用 CMK，接入方式见 `docs/kms.md`。任务数固定：DEV/PPD 每服务 1 个，PRD 每服务 2 个。
 
@@ -158,7 +158,7 @@ Terraform 管配置，CodeBuild 管镜像和部署，互不覆盖。靠两个设
 按最新 PR 评审，本模板为每个环境创建专用 S3 CMK 和 CloudWatch Logs CMK；密钥由 AZ 管理员运维。
 S3 开启 SSE-KMS 和 Bucket Key，后端任务角色获得限定到文件桶、密钥和 S3 服务上下文的权限。
 两把 CMK 均开启自动轮换、配置 30 天删除等待期，并设置 Terraform `prevent_destroy`。
-部署前填 `kms_administrator_arns`，其中必须包含实际部署角色的 IAM ARN。详见 `docs/kms.md`。
+执行 Terraform 的角色自动成为密钥管理员；额外管理员填 `kms_administrator_arns`。详见 `docs/kms.md`。
 
 上传不带加密请求头时使用桶默认值；显式指定加密时必须同时指定 `aws:kms` 和上述完整 key ARN。
 SSE-S3、SSE-C、其他密钥，以及只指定 `aws:kms` 而不指定 key ARN 的上传会被拒绝。

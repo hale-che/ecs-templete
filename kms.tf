@@ -1,6 +1,13 @@
 # Per the latest review, create separate S3 and CloudWatch Logs CMKs for each environment; AZ manages the keys.
 # Use role ARN condition strings in the key policy to avoid a key -> role -> key dependency cycle.
+# Resolve the assumed-role session to its IAM role ARN; the deployer is always a key administrator.
+data "aws_iam_session_context" "current" {
+  arn = data.aws_caller_identity.current.arn
+}
+
 locals {
+  kms_admin_arns = distinct(concat([data.aws_iam_session_context.current.issuer_arn], var.kms_administrator_arns))
+
   # KMS ViaService uses amazonaws.com in every partition; do not use the aws-cn DNS suffix.
   kms_s3_via_service      = "s3.${var.region}.amazonaws.com"
   kms_secrets_via_service = "secretsmanager.${var.region}.amazonaws.com"
@@ -50,7 +57,7 @@ data "aws_iam_policy_document" "kms_administration" {
     resources = ["*"]
     principals {
       type        = "AWS"
-      identifiers = var.kms_administrator_arns
+      identifiers = local.kms_admin_arns
     }
   }
 }
