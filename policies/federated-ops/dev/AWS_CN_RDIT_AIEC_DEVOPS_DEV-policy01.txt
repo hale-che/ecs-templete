@@ -15,6 +15,7 @@
                 "ecs:DescribeCapacityProviders",
                 "ecs:ListAccountSettings",
                 "ec2:Describe*",
+                "ec2:GetManagedPrefixListEntries",
                 "elasticloadbalancing:Describe*",
                 "rds:Describe*",
                 "servicediscovery:Get*",

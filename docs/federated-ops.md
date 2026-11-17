@@ -12,7 +12,7 @@
 | --- | --- |
 | `AWS_CN_RDIT_AIEC_DEVOPS_DEV-policy01.txt` | 只读排查及相关基础配置查询 |
 | `AWS_CN_RDIT_AIEC_DEVOPS_DEV-policy02.txt` | DEV ECS、ECR、CodeBuild、S3、日志、Secret、监控及 PassRole |
-| `AWS_CN_RDIT_AIEC_DEVOPS_DEV-policy03.txt` | DEV 服务角色及内联策略、服务关联角色、KMS key / alias、Cloud Map |
+| `AWS_CN_RDIT_AIEC_DEVOPS_DEV-policy03.txt` | DEV 项目安全组及规则、服务角色及内联策略、服务关联角色、KMS key / alias、Cloud Map |
 
 只读人员关联第一份；完整 DEV 运维关联三份。每份须在 IAM 单个托管策略的 6144 字符上限内。
 文件名及排版参考 `examples/` 中的三个 txt，权限及资源依据当前 AIEC 项目配置。

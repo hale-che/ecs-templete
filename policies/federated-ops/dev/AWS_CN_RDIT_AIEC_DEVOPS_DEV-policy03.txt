@@ -2,6 +2,104 @@
     "Version": "2012-10-17",
     "Statement": [
         {
+            "Sid": "CreateTaggedDevSecurityGroups",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:CreateSecurityGroup"
+            ],
+            "Resource": "arn:aws-cn:ec2:cn-north-1:332091793104:security-group/*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:RequestTag/Project": "aiec",
+                    "aws:RequestTag/environment": "dev"
+                }
+            }
+        },
+        {
+            "Sid": "CreateDevSecurityGroupsInExistingVpcs",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:CreateSecurityGroup"
+            ],
+            "Resource": "arn:aws-cn:ec2:cn-north-1:332091793104:vpc/*"
+        },
+        {
+            "Sid": "ManageTaggedDevSecurityGroups",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DeleteSecurityGroup",
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:AuthorizeSecurityGroupEgress",
+                "ec2:RevokeSecurityGroupIngress",
+                "ec2:RevokeSecurityGroupEgress",
+                "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
+                "ec2:UpdateSecurityGroupRuleDescriptionsEgress"
+            ],
+            "Resource": "arn:aws-cn:ec2:cn-north-1:332091793104:security-group/*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:ResourceTag/Project": "aiec",
+                    "aws:ResourceTag/environment": "dev"
+                }
+            }
+        },
+        {
+            "Sid": "CreateTaggedDevSecurityGroupRules",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:AuthorizeSecurityGroupEgress"
+            ],
+            "Resource": "arn:aws-cn:ec2:cn-north-1:332091793104:security-group-rule/*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:RequestTag/Project": "aiec",
+                    "aws:RequestTag/environment": "dev"
+                }
+            }
+        },
+        {
+            "Sid": "TagNewDevSecurityGroupResources",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:CreateTags"
+            ],
+            "Resource": [
+                "arn:aws-cn:ec2:cn-north-1:332091793104:security-group/*",
+                "arn:aws-cn:ec2:cn-north-1:332091793104:security-group-rule/*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "ec2:CreateAction": [
+                        "CreateSecurityGroup",
+                        "AuthorizeSecurityGroupIngress",
+                        "AuthorizeSecurityGroupEgress"
+                    ],
+                    "aws:RequestTag/Project": "aiec",
+                    "aws:RequestTag/environment": "dev"
+                }
+            }
+        },
+        {
+            "Sid": "ManageTaggedDevSecurityGroupRulesAndTags",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:ModifySecurityGroupRules",
+                "ec2:CreateTags",
+                "ec2:DeleteTags"
+            ],
+            "Resource": [
+                "arn:aws-cn:ec2:cn-north-1:332091793104:security-group/*",
+                "arn:aws-cn:ec2:cn-north-1:332091793104:security-group-rule/*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "aws:ResourceTag/Project": "aiec",
+                    "aws:ResourceTag/environment": "dev"
+                }
+            }
+        },
+        {
             "Sid": "ManageDevServiceRoles",
             "Effect": "Allow",
             "Action": [

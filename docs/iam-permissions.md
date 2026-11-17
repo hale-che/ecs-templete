@@ -137,6 +137,10 @@ KMS 资源只包含本项目创建的文件桶 CMK，条件限制为本区域 S3
 
 | Action | Resource | 为什么需要 |
 | --- | --- | --- |
+| `ec2:CreateSecurityGroup` | 本账号、本区域的 `security-group/*`，要求 `Project=aiec` / `environment=dev` 请求标签；另单独允许 `vpc/*`（实际 VPC ID 确认后收窄） | `security_groups.tf` 为每服务创建安全组；DEV 交付在 policy03，其他环境需对应环境授权 |
+| `ec2:Describe*` `ec2:GetManagedPrefixListEntries` | DEV policy01 为 `*`，限制区域 `cn-north-1` | 查询子网、VPC、安全组及 S3 managed prefix list 条目；prefix list 条目读取不在 `Describe*` 中 |
+| `ec2:DeleteSecurityGroup` `ec2:AuthorizeSecurityGroupIngress` `ec2:AuthorizeSecurityGroupEgress` `ec2:RevokeSecurityGroupIngress` `ec2:RevokeSecurityGroupEgress` `ec2:UpdateSecurityGroupRuleDescriptionsIngress` `ec2:UpdateSecurityGroupRuleDescriptionsEgress` | 本账号、本区域且带 `Project=aiec` / `environment=dev` 资源标签的 `security-group/*`；带标签新建规则另授权 `security-group-rule/*` 请求标签 | 管理项目安全组的入站/出站规则，撤销自动生成的默认出站规则；不修改外部共享安全组 |
+| `ec2:ModifySecurityGroupRules` `ec2:CreateTags` `ec2:DeleteTags` | 同上项目标签限定的安全组及规则；创建时的标签另按 `ec2:CreateAction` 及请求标签授权 | 更新独立规则及维护标签；规则更新同时核验安全组和规则资源 |
 | `iam:CreateRole` `iam:DeleteRole` `iam:GetRole` `iam:UpdateRole` `iam:UpdateAssumeRolePolicy` `iam:TagRole` `iam:UntagRole` `iam:ListInstanceProfilesForRole` | `role/az-cn-rdit-<project>-*-<environment>` | 建本项目服务角色，按项目及环境限定 |
 | `iam:PutRolePolicy` `iam:DeleteRolePolicy` `iam:GetRolePolicy` `iam:ListRolePolicies` `iam:ListAttachedRolePolicies` | `role/az-cn-rdit-<project>-*-<environment>` | 角色的内联策略 |
 | `iam:PassRole` | 本环境逐个执行 / 任务角色 ARN | 注册 Task Definition 时把角色传给 ECS |

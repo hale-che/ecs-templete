@@ -2,13 +2,13 @@
 
 本目录是扩充后的 DEV 运维交付策略，JSON 以 `.txt` 保存，文件名及排版参考 `../examples/`。
 账号 `332091793104`，分区 `aws-cn`，区域 `cn-north-1`，项目 `aiec`，环境 `dev`。
-资源命名依据 `env/dev.tfvars`、`locals.tf`、`s3.tf`、`kms.tf`、`iam.tf` 和 `cluster.tf`。
+资源命名依据 `env/dev.tfvars`、`locals.tf`、`s3.tf`、`kms.tf`、`iam.tf`、`cluster.tf` 和 `security_groups.tf`。
 
 | 文件 | 用途 |
 | --- | --- |
 | `AWS_CN_RDIT_AIEC_DEVOPS_DEV-policy01.txt` | 只读排查：ECS、日志、镜像、构建结果、指标；网络、RDS、ALB、Cloud Map、KMS、Secret 和 IAM 配置查询 |
 | `AWS_CN_RDIT_AIEC_DEVOPS_DEV-policy02.txt` | DEV 应用资源管理：ECS 发布/回滚/任务操作、ECR 仓库及镜像、CodeBuild 项目/构建、S3 桶及对象、日志、Secret、监控，以及 ECS / CodeBuild PassRole |
-| `AWS_CN_RDIT_AIEC_DEVOPS_DEV-policy03.txt` | DEV 基础权限：项目服务角色及内联策略、必要的服务关联角色、带 DEV 标签的 KMS key、DEV alias、Cloud Map HTTP namespace 及带 DEV 标签的服务发现资源 |
+| `AWS_CN_RDIT_AIEC_DEVOPS_DEV-policy03.txt` | DEV 基础权限：项目安全组及规则、服务角色及内联策略、必要的服务关联角色、带 DEV 标签的 KMS key、DEV alias、Cloud Map HTTP namespace 及带 DEV 标签的服务发现资源 |
 
 只读人员关联 policy01；完整 DEV 运维关联三份。扩充后按职责拆成三份，避免两份合并时接近 IAM 单个托管策略的 6144 字符上限。
 `Version` 固定为 `2012-10-17`，它是 IAM 策略语言版本，不是文件修改日期。
@@ -24,6 +24,10 @@
 - Secret 名称按当前 DEV 配置逐个限定为 `aiec/personal/tls`、`aiec/personal/backend-runtime`、`aiec/personal/database`（ARN 另有 AWS 自动追加的六位后缀）；包含读取/修改 Secret 值、版本和资源策略等管理操作。修改 `secret_name_prefix` 或 `managed_secrets` 时需同步更新 policy02。
 - 监控告警和 dashboard 限定 `az-cn-rdit-aiec-*-dev` 名称。
 - IAM 角色限定 `az-cn-rdit-aiec-*-dev`，允许角色生命周期、信任策略和内联权限策略管理；PassRole 分别限定给 ECS Tasks 和 CodeBuild。
+- 安全组及规则限定本账号、本区域；创建要求请求标签 `Project=aiec`、`environment=dev`，后续安全组删除、入站/出站规则管理及标签维护要求相同资源标签。`providers.tf` 的 `default_tags` 会传给新建安全组及独立规则资源。
+  policy01 的区域查询还包括 `ec2:GetManagedPrefixListEntries`，供 S3 managed prefix list 数据源读取条目；仅 `Describe*` 不足以完成该查询。
+  `CreateSecurityGroup` 的 VPC 授权单独列出为本账号、本区域的 `vpc/*`：当前 VPC ID 由子网查询得出，交付文件没有固定值；取得实际 ID 后可进一步收窄。该授权不允许修改或删除 VPC，新安全组仍须满足请求标签条件。
+  Terraform 创建安全组后撤销默认出站规则按安全组标签授权，因此不要求 AWS 自动生成的默认规则也具备项目标签。更新独立规则时，安全组和规则均须有上述资源标签。
 - KMS 创建要求请求标签 `Project=aiec`、`Environment=dev`；已有 key 管理及使用要求相同资源标签，alias 限定 `az-cn-rdit-aiec-*-dev`。
   创建时打标签允许标签尚不存在的 key，但不能把已有其他 Project / Environment 标签的 key 改标为 DEV。
 - HTTP namespace 创建要求上述请求标签；已有 namespace / service 的管理要求相同资源标签。
@@ -52,7 +56,7 @@ policy01 和 policy02 已按 `env/dev.tfvars` 同步填写上述仓库名；后�
 - ECS Exec 仍需服务/任务启用 Exec、任务角色具有 SSM Messages 通道权限并满足网络和容器条件；本次不改变运行中的服务配置。
 - Cloud Map 的按标签管理依赖资源实际具备 `Project=aiec`、`Environment=dev`；ECS 自动创建的服务应先核对标签。未附带这些标签的服务不能按本策略直接修改。
 - `ecs:DeregisterTaskDefinition` 不支持资源级限定，未额外授予整个区域的注销权限；需要清理旧 revision 时由 AZ 使用适当角色处理。
-- 共享子网/安全组/ALB/WAF/RDS 只提供查询。Terraform backend 的 state 桶及锁表未配置在项目文件中，须 AZ 按实际 ARN 另授予访问权。
+- 不具备上述项目及 DEV 标签的共享安全组只提供查询，不能通过本策略先改标再获得管理权限；外部 ALB / RDS / VPC Endpoint 安全组的联通规则仍由 AZ 维护。共享子网/ALB/WAF/RDS 只提供查询。Terraform backend 的 state 桶及锁表未配置在项目文件中，须 AZ 按实际 ARN 另授予访问权。
 - 角色和内联策略管理、构建脚本修改、Secret 和数据访问均属于较高权限；这些 Allow 策略不构成权限边界，AZ 的 SCP、Boundary、资源策略及角色其他授权共同决定最终权限。
 
 ## 维护与验证
@@ -68,4 +72,5 @@ python3 tests/check-dev-federated-policies.py
 ```
 
 本地检查验证 JSON、大小及典型权限边界，不等于 AWS IAM Policy Simulator 或真实账号验收。
+安全组授权资源及标签条件参照 [AWS EC2 Service Authorization Reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html) 和 [VPC policy examples](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-policy-examples.html)。
 完整交付说明见[运维权限交付](../../../docs/federated-ops.md)。
