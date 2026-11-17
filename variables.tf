@@ -180,8 +180,13 @@ variable "services" {
     # Container listening port, also used as the ALB target port.
     port = number
 
-    # Created and supplied by AZ; all services in all three environments currently share one security group whose rules AZ manages.
-    security_group_ids = list(string)
+    # Security groups are created per service (security_groups.tf).
+    # Services allowed to connect to this service's port, e.g. backend accepts frontend-ext / frontend-int.
+    ingress_from_services = optional(list(string), [])
+    # Allow PostgreSQL (5432) egress to RDS inside the VPC.
+    database_access = optional(bool, false)
+    # Allow HTTPS egress to the internet (Entra ID, Microsoft Graph) via NAT or proxy.
+    internet_https_egress = optional(bool, false)
 
     # ALB target group, required only for services receiving user traffic; health checks are configured on the target group.
     # Leave null for services without an ALB and use health_check_command instead.
@@ -251,6 +256,11 @@ variable "services" {
   }
 
   # Catch any leftover placeholder in one shot: repository, tag, security groups, secrets.
+  validation {
+    condition     = alltrue(flatten([for s in values(var.services) : [for src in s.ingress_from_services : contains(keys(var.services), src)]]))
+    error_message = "ingress_from_services may only reference service names defined in services."
+  }
+
   validation {
     condition     = alltrue([for s in values(var.services) : !can(regex("REPLACE_ME", jsonencode(s)))])
     error_message = "services still contains REPLACE_ME values."

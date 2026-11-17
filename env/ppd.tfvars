@@ -47,8 +47,7 @@ services = {
     port          = 8443
     desired_count = 1
 
-    security_group_ids = ["sg-0960c20f67f17cb68"]
-    target_group_arn   = "arn:aws-cn:elasticloadbalancing:cn-north-1:REPLACE_ME:targetgroup/REPLACE_ME/REPLACE_ME"
+    target_group_arn = "arn:aws-cn:elasticloadbalancing:cn-north-1:REPLACE_ME:targetgroup/REPLACE_ME/REPLACE_ME"
 
     environment = {
       APP_ENV     = "ppd"
@@ -68,8 +67,7 @@ services = {
     port          = 8443
     desired_count = 1
 
-    security_group_ids = ["sg-0960c20f67f17cb68"]
-    target_group_arn   = "arn:aws-cn:elasticloadbalancing:cn-north-1:REPLACE_ME:targetgroup/REPLACE_ME/REPLACE_ME"
+    target_group_arn = "arn:aws-cn:elasticloadbalancing:cn-north-1:REPLACE_ME:targetgroup/REPLACE_ME/REPLACE_ME"
 
     environment = {
       APP_ENV     = "ppd"
@@ -92,8 +90,12 @@ services = {
     port               = 8002
     desired_count      = 1
 
-    security_group_ids   = ["sg-0960c20f67f17cb68"]
     service_connect_name = "backend-service"
+
+    # Security group rules: frontends -> 8002, egress 5432 to RDS and 443 to Entra ID / Graph.
+    ingress_from_services = ["frontend-ext", "frontend-int"]
+    database_access       = true
+    internet_https_egress = true
 
     # Without an ALB health check, the container health check is the only health signal.
     # -k skips self-signed certificate verification; curl must be installed in the image.

@@ -2,8 +2,8 @@
 
 三个服务（`frontend-ext` / `frontend-int` / `backend`）的 Task Definition，区域 `cn-north-1`。
 
-管：ECS 集群、三个服务、Task Definition、日志组、应用文件桶、ECR 仓库、CodeBuild 项目、每服务的 IAM 角色、项目专用的 S3 / CloudWatch Logs 两把 CMK、Secrets Manager 空 Secret（值人工录入）。
-不管：安全组、ALB / 目标组 / 监听器、RDS、Secret 的值、存 state 的 S3 桶和锁表。前三样由 AZ 创建，ID 填进 tfvars。
+管：ECS 集群、三个服务、Task Definition、日志组、应用文件桶、ECR 仓库、CodeBuild 项目、每服务的 IAM 角色、每服务一个安全组（`security_groups.tf`）、项目专用的 S3 / CloudWatch Logs 两把 CMK、Secrets Manager 空 Secret（值人工录入）。
+不管：ALB / 目标组 / 监听器、RDS、Secret 的值、存 state 的 S3 桶和锁表。ALB / RDS 由 AZ 创建，目标组 ARN 填进 tfvars。
 
 apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任务在跑。
 
@@ -18,7 +18,6 @@ apply 完就是能跑起来的完整框架 —— 有集群、有服务、有任
 | `repository` ×3 | 三个 ECR 仓库名，本模板按这个名字建仓库，只收小写 |
 | `image_tag` ×3 | 各环境首次部署使用的已推送时间戳 tag，例如 `20261112153045`；不控制 CodeBuild 构建 tag |
 | `subnet_ids` | AZ 给的私有子网，≥2 个 |
-| `security_group_ids` ×3 | AZ 给的安全组 |
 | `target_group_arn` ×2 | AZ 给的目标组，只有两个前端 |
 | `repo_url` ×3 | GitHub 仓库地址 |
 | `kms_administrator_arns` | 可选：额外的 AZ 密钥管理员 role ARN；执行 Terraform 的角色自动加入 |
